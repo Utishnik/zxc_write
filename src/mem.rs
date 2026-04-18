@@ -75,6 +75,20 @@ pub unsafe fn extract_ascii_strings(
     extract_res
 }
 
+#[inline(always)]
+fn check_unicode(c1: u8, c2: u8) -> bool {
+    is_printable_char(c1) && is_null_term_ascii(c2)
+}
+
+#[inline(always)]
+unsafe fn buf_get_u8(buf: *const u8, idx: usize) -> (u8, u8) {
+    unsafe {
+        let as_char1 = (*buf.add(idx)) as u8;
+        let as_char2 = (*buf.add(idx + 1)) as u8;
+        (as_char1, as_char2)
+    }
+}
+
 pub unsafe fn extract_unicode_strings(
     buf: *const u8,
     size: usize,
@@ -85,9 +99,16 @@ pub unsafe fn extract_unicode_strings(
     let mut extract_res: Vec<ExtractStr> = Vec::with_capacity(size / min_len);
     unsafe {
         for i in (0..size - 1).step_by(2) {
-            let as_char1 = (*buf.add(i)) as char;
-            let as_char2 = (*buf.add(i + 1)) as char;
-            if is_printable_char(as_char1 as u8) && is_null_term_unicode(as_char2) {}
+            let as_char1 = (*buf.add(i)) as u8;
+            let as_char2 = (*buf.add(i + 1)) as u8;
+            if check_unicode(as_char1, as_char2) {
+                let mut wstr: String = String::default();
+                for j in (i..size - 1).into_iter().filter(|x| -> bool {
+                    let inner_as_char1 = (*buf.add(*x)) as u8;
+                    let inner_as_char2 = (*buf.add(*x + 1)) as u8;
+                    check_unicode(inner_as_char1, inner_as_char2)
+                }) {}
+            }
         }
     }
 }
