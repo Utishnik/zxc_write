@@ -20,15 +20,75 @@ pub fn is_printable_char(c: u8) -> bool {
     (0x20..0x7E).contains(&c)
 }
 
-pub unsafe fn extract_strings(
+pub const fn is_null_term_ascii(c: u8) -> bool {
+    c == 0x00
+}
+
+pub const fn is_null_term_unicode(c: char) -> bool {
+    c == '\0'
+}
+
+#[derive(Debug, Default)]
+pub struct ExtractStr {
+    pub base_addr: *mut core::ffi::c_void,
+    pub str: String,
+}
+///# Safety
+pub unsafe fn extract_ascii_strings(
     buf: *const u8,
     size: usize,
     base_ptr: *mut core::ffi::c_void,
     min_len: usize,
-) {
+    max_len: Option<usize>,
+) -> Vec<ExtractStr> {
+    let mut extract_res: Vec<ExtractStr> = Vec::with_capacity(size / min_len);
     let mut cur: String = String::default();
+    let mut cur_char: char = char::default();
+    let max_len_some: bool = max_len.is_some();
     for i in 0..size {
-        unsafe { if is_printable_char(buf.offset(i as isize) as u8) {} }
+        unsafe {
+            if is_printable_char(buf.add(i) as u8) {
+                let as_char = (*buf.add(i)) as char;
+                cur_char = as_char;
+                cur.push(as_char);
+            } else {
+                if (cur.len() >= min_len && (max_len_some && cur.len() >= max_len.unwrap()))
+                    || cur.len() >= min_len && (max_len_some && is_null_term_ascii(cur_char as u8))
+                {
+                    extract_res.push(ExtractStr {
+                        base_addr: base_ptr.add(i - cur.len()),
+                        str: cur.clone(),
+                    });
+                }
+                cur.clear();
+            }
+        }
+    }
+    unsafe {
+        if cur.len() >= min_len {
+            extract_res.push(ExtractStr {
+                base_addr: base_ptr.add(size - cur.len()),
+                str: cur.clone(),
+            });
+        }
+    }
+    extract_res
+}
+
+pub unsafe fn extract_unicode_strings(
+    buf: *const u8,
+    size: usize,
+    base_ptr: *mut core::ffi::c_void,
+    min_len: usize,
+    max_len: Option<usize>,
+) {
+    let mut extract_res: Vec<ExtractStr> = Vec::with_capacity(size / min_len);
+    unsafe {
+        for i in (0..size - 1).step_by(2) {
+            let as_char1 = (*buf.add(i)) as char;
+            let as_char2 = (*buf.add(i + 1)) as char;
+            if is_printable_char(as_char1 as u8) && is_null_term_unicode(as_char2) {}
+        }
     }
 }
 
