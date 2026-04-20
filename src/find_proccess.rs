@@ -66,3 +66,46 @@ pub fn find_process_by_name(process_name: &str) -> Result<u32, FindProccesError>
         }
     }
 }
+
+#[derive(Debug)]
+pub struct ProcessInfo {
+    pub pid: u32,
+    pub parent_pid: u32,
+    pub name: String,
+}
+
+/// # Errors
+/// возвращает ошибку если не удалось закрыть handle, если не нашел процесс, если snapshot вернул ошибку
+pub fn get_all_processes_detailed() -> Result<Vec<ProcessInfo>, FindProccesError> {
+    let mut list = Vec::new();
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if let Err(e) = snapshot {
+            return Err(FindProccesError::Snapshot(e));
+        } else if let Ok(snapshot) = snapshot {
+            let mut entry: PROCESSENTRY32W = std::mem::zeroed();
+            entry.dwSize = std::mem::size_of_val(&entry) as u32;
+
+            if Process32FirstW(snapshot, &mut entry).is_ok() {
+                loop {
+                    let name = String::from_utf16_lossy(&entry.szExeFile)
+                        .trim_end_matches('\0')
+                        .to_string();
+                    list.push(ProcessInfo {
+                        pid: entry.th32ProcessID,
+                        parent_pid: entry.th32ParentProcessID,
+                        name,
+                    });
+                    if Process32NextW(snapshot, &mut entry).is_ok() {
+                        break;
+                    }
+                }
+            }
+            let ch = CloseHandle(snapshot);
+            if let Err(e) = ch {
+                return Err(FindProccesError::CloseHndl(e));
+            }
+        }
+    }
+    Ok(list)
+}
