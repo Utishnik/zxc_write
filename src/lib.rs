@@ -16,7 +16,6 @@
     // Явные типы и аннотации
     clippy::let_underscore_untyped,
     clippy::implicit_hasher,
-    clippy::implicit_return,
     clippy::implicit_saturating_sub,
     clippy::implicit_clone,
     clippy::default_constructed_unit_structs,
@@ -43,4 +42,5 @@
     clippy::redundant_type_annotations, // не требовать убирать явные типы
 )]
 
+pub mod find_proccess;
 pub mod mem;

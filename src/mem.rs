@@ -149,9 +149,13 @@ pub unsafe fn extract_unicode_strings(
                     .enumerate()
                 {
                     let empty_c = ' ';
+                    let tern_nil = '\0';
                     let (high, low) = *j.1;
                     let as_char = ascii_to_char(high, low);
                     if let Some(c) = as_char {
+                        if c == tern_nil {
+                            break;
+                        }
                         wstr.push(c);
                     } else {
                         wstr.push(empty_c);
@@ -172,9 +176,10 @@ pub unsafe fn extract_unicode_strings(
     extract_res
 }
 
+#[derive(Debug)]
 pub struct StringCfg {
-    min_len: usize,
-    max_len: Option<usize>,
+    pub min_len: usize,
+    pub max_len: Option<usize>,
 }
 
 impl Default for StringCfg {
@@ -186,19 +191,32 @@ impl Default for StringCfg {
     }
 }
 
-fn scan_process_strings(dwprocessid: u32) -> bool {
+#[derive(Debug)]
+pub struct ExtractResult {
+    pub ascii: Vec<ExtractStr>,
+    pub unicode: Vec<ExtractStr>,
+}
+
+/// # Panics
+/// если неверный конфиг
+#[must_use]
+pub fn scan_process_strings(dwprocessid: u32) -> Option<ExtractResult> {
     //PROCESS_QUERY_INFORMATION
-    let cfg = StringCfg::default();
+    let cfg_ascii: StringCfg = StringCfg::default();
+    let cfg_unicode: StringCfg = StringCfg {
+        min_len: 5,
+        max_len: Some(25),
+    };
     unsafe {
-        let hProcess = OpenProcess(
+        let h_process = OpenProcess(
             PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
             false,
             dwprocessid,
         );
-        match hProcess {
+        match h_process {
             Ok(ok) => {
                 let mbi: *mut MEMORY_BASIC_INFORMATION = ptr::null_mut();
-                let mut addr: Option<*const c_void> = None;
+                let addr: Option<*const c_void> = None;
                 while let ret = VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>())
                     && ret != 0
                 {
@@ -211,25 +229,38 @@ fn scan_process_strings(dwprocessid: u32) -> bool {
                         let ptr_buf: *mut c_void = buffer.as_mut_ptr() as *mut c_void;
                         let reg_size: usize = (*mbi).RegionSize;
                         let byte_read: Option<*mut usize> = Some(ptr::null_mut());
-                        if let rpm = ReadProcessMemory(ok, base_addr, ptr_buf, reg_size, byte_read)
-                        {
-                            match byte_read {
-                                Some(x) => {
+                        if ReadProcessMemory(ok, base_addr, ptr_buf, reg_size, byte_read).is_ok() {
+                            let res = byte_read.map_or_else(
+                                || {
+                                    println!("LOG: error byte_read is none");
+                                    None
+                                },
+                                |x| {
                                     let extract_ascii_str = extract_ascii_strings(
                                         ptr_buf as *const u8,
                                         *x,
                                         base_addr,
-                                        cfg.min_len,
-                                        cfg.max_len,
+                                        cfg_ascii.min_len,
+                                        cfg_ascii.max_len,
                                     );
-                                    //let extract_unicode_str =
-                                }
-                                None => {
-                                    println!("LOG: error byte_read is none");
-                                }
-                            };
+                                    let extract_unicode_str = extract_unicode_strings(
+                                        ptr_buf as *const u8,
+                                        *x,
+                                        base_addr,
+                                        cfg_unicode.min_len,
+                                        cfg_unicode.max_len.unwrap(),
+                                    );
+                                    let ret: ExtractResult = ExtractResult {
+                                        ascii: extract_ascii_str,
+                                        unicode: extract_unicode_str,
+                                    };
+                                    Some(ret)
+                                },
+                            );
+                            return res;
                         } else {
                             println!("LOG: error fail ReadProcessMemory");
+                            return None;
                         }
                     }
                 }
@@ -239,5 +270,5 @@ fn scan_process_strings(dwprocessid: u32) -> bool {
             }
         }
     }
-    false
+    None
 }
