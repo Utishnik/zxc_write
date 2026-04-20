@@ -38,6 +38,11 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "e6e4313cd5fcd3dad5cafa179702e2b244f760991f45397d14d4ebf38247da75"
 
 [[package]]
+name = "vec-string"
+version = "0.2.1"
+source = "git+https://github.com/Utishnik/vec-string#779d699e1cc402862ebd18c6a916419bcba3ee16"
+
+[[package]]
 name = "windows"
 version = "0.62.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -151,5 +156,6 @@ dependencies = [
 name = "zxc_write"
 version = "0.1.0"
 dependencies = [
+ "vec-string",
  "windows",
 ]

@@ -1,3 +1,6 @@
+use std::{fmt::write, path::Display};
+
+use vec_string::*;
 use windows::{
     Win32::{Foundation::*, System::Diagnostics::ToolHelp::*},
     core::Error,
@@ -74,6 +77,16 @@ pub struct ProcessInfo {
     pub name: String,
 }
 
+impl std::fmt::Display for ProcessInfo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(
+            f,
+            "(pid: {};parent_pid: {};name: {})",
+            self.pid, self.parent_pid, self.name
+        )
+    }
+}
+
 /// # Errors
 /// возвращает ошибку если не удалось закрыть handle, если не нашел процесс, если snapshot вернул ошибку
 pub fn get_all_processes_detailed() -> Result<Vec<ProcessInfo>, FindProccesError> {
@@ -108,4 +121,15 @@ pub fn get_all_processes_detailed() -> Result<Vec<ProcessInfo>, FindProccesError
         }
     }
     Ok(list)
+}
+
+#[test]
+fn test_get_all_processes_detailed() {
+    let f = get_all_processes_detailed();
+    if let Err(e) = f {
+        println!("{:?}", e);
+    } else if let Ok(ok) = f {
+        let fmt = ok.vec_string(DEFAULT_FORMAT_RULE);
+        println!("{}", fmt);
+    }
 }
