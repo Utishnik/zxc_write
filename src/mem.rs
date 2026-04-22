@@ -209,7 +209,7 @@ pub struct ExtractResult {
 #[derive(Debug)]
 pub enum ScanProcessStringsError {
     ReadProcessMemory,
-    OpenProcess,
+    OpenProcess(Error),
     VirtualQueryEx(usize),
 }
 
@@ -281,7 +281,7 @@ pub fn scan_process_strings(
                 }
             }
             Err(e) => {
-                return Err(ScanProcessStringsError::OpenProcess);
+                return Err(ScanProcessStringsError::OpenProcess(e));
             }
         }
     }
