@@ -4,11 +4,16 @@ use zxc_write::mem::*;
 
 fn find_strings(dwprocessid: u32) -> Result<ExtractResult, ()> {
     let strs = scan_process_strings(dwprocessid);
-    if strs.is_none() {
+    if let Err(e) = strs {
+        println!("[DEBUG] strs Err: {:?}", e);
         return Err(());
     }
     let strs = strs.unwrap();
-    Ok(strs)
+    if strs.is_none() {
+        println!("[DEBUG] find_strings strs is none");
+        return Err(());
+    }
+    Ok(strs.unwrap())
 }
 
 fn main() {

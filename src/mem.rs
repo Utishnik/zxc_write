@@ -206,10 +206,19 @@ pub struct ExtractResult {
     pub unicode: Vec<ExtractStr>,
 }
 
+#[derive(Debug)]
+pub enum ScanProcessStringsError {
+    ReadProcessMemory,
+    OpenProcess,
+    VirtualQueryEx,
+}
+
 /// # Panics
 /// если неверный конфиг
 #[must_use]
-pub fn scan_process_strings(dwprocessid: u32) -> Option<ExtractResult> {
+pub fn scan_process_strings(
+    dwprocessid: u32,
+) -> Result<Option<ExtractResult>, ScanProcessStringsError> {
     //PROCESS_QUERY_INFORMATION
     let cfg_ascii: StringCfg = StringCfg::default();
     let cfg_unicode: StringCfg = StringCfg {
@@ -226,7 +235,7 @@ pub fn scan_process_strings(dwprocessid: u32) -> Option<ExtractResult> {
             Ok(ok) => {
                 let mbi: *mut MEMORY_BASIC_INFORMATION = ptr::null_mut();
                 let addr: Option<*const c_void> = None;
-                while let ret = VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>())
+                if let ret = VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>())
                     && ret != 0
                 {
                     let get_protect = (*mbi).Protect;
@@ -266,17 +275,19 @@ pub fn scan_process_strings(dwprocessid: u32) -> Option<ExtractResult> {
                                     Some(ret)
                                 },
                             );
-                            return res;
+                            return Ok(res);
                         } else {
                             println!("LOG: error fail ReadProcessMemory");
-                            return None;
+                            return Err(ScanProcessStringsError::ReadProcessMemory);
                         }
                     }
+                } else {
+                    return Err(ScanProcessStringsError::VirtualQueryEx);
                 }
             }
             Err(e) => {
                 println!("OpenProcess failed: {}", e);
-                return None;
+                return Err(ScanProcessStringsError::OpenProcess);
             }
         }
     }

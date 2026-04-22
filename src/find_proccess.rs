@@ -1,5 +1,3 @@
-use std::{fmt::write, path::Display};
-
 use vec_string::*;
 use windows::{
     Win32::{Foundation::*, System::Diagnostics::ToolHelp::*},
