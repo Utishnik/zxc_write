@@ -41,7 +41,15 @@ pub struct ExtractStr {
     pub base_addr: *mut core::ffi::c_void,
     pub str: String,
 }
+
+impl std::fmt::Display for ExtractStr {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        writeln!(f, "Str: {}", self.str)
+    }
+}
+
 ///# Safety
+///
 pub unsafe fn extract_ascii_strings(
     buf: *const u8,
     size: usize,
@@ -60,6 +68,7 @@ pub unsafe fn extract_ascii_strings(
                 cur_char = as_char;
                 cur.push(as_char);
             } else {
+                #[expect(clippy::missing_panics_doc, reason = "infallible")]
                 if (cur.len() >= min_len && (max_len_some && cur.len() >= max_len.unwrap()))
                     || cur.len() >= min_len && (max_len_some && is_null_term_ascii(cur_char as u8))
                 {
@@ -267,8 +276,9 @@ pub fn scan_process_strings(dwprocessid: u32) -> Option<ExtractResult> {
             }
             Err(e) => {
                 println!("OpenProcess failed: {}", e);
+                return None;
             }
         }
     }
-    None
+    unreachable!();
 }

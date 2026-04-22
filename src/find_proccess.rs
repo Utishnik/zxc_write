@@ -109,7 +109,7 @@ pub fn get_all_processes_detailed() -> Result<Vec<ProcessInfo>, FindProccesError
                         parent_pid: entry.th32ParentProcessID,
                         name,
                     });
-                    if Process32NextW(snapshot, &mut entry).is_ok() {
+                    if Process32NextW(snapshot, &mut entry).is_err() {
                         break;
                     }
                 }
@@ -131,5 +131,17 @@ fn test_get_all_processes_detailed() {
     } else if let Ok(ok) = f {
         let fmt = ok.vec_string(DEFAULT_FORMAT_RULE);
         println!("{}", fmt);
+    }
+}
+
+#[test]
+fn test_find_pid() {
+    let fnd_name = find_process_by_name("firefox.exe");
+    if let Err(e) = fnd_name {
+        println!("Error: {:?}", e);
+        return;
+    }
+    if let Ok(pid) = fnd_name {
+        println!("Pid: {}", pid);
     }
 }

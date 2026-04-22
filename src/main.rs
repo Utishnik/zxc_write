@@ -1,24 +1,33 @@
+use vec_string::*;
 use zxc_write::find_proccess::*;
 use zxc_write::mem::*;
 
-fn find_strings(dwprocessid: u32) {
+fn find_strings(dwprocessid: u32) -> Result<ExtractResult, ()> {
     let strs = scan_process_strings(dwprocessid);
     if strs.is_none() {
-        println!("find strings failed: None");
-        return;
+        return Err(());
     }
     let strs = strs.unwrap();
-    println!("{:?}", strs);
+    Ok(strs)
 }
 
 fn main() {
     //find_strings();
-    let fnd_name = find_process_by_name("Firefox");
+    let fnd_name = find_process_by_name("firefox.exe");
     if let Err(e) = fnd_name {
         println!("Error: {:?}", e);
         return;
     }
-    if let Ok(pid) = fnd_name {
-        println!("Pid: {}", pid);
+    let pid = fnd_name.unwrap();
+    let find_res = find_strings(pid);
+    if find_res.is_err() {
+        println!("find strings failed: None");
+        return;
     }
+    let find_res = find_res.unwrap();
+    println!("Ascii:\t{}", find_res.ascii.vec_string(DEFAULT_FORMAT_RULE));
+    println!(
+        "Unicode:\t{}",
+        find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
+    );
 }
