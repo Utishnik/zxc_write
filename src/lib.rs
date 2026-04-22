@@ -42,5 +42,7 @@
     clippy::redundant_type_annotations, // не требовать убирать явные типы
 )]
 
+pub mod error_hand;
 pub mod find_proccess;
 pub mod mem;
+pub mod utils;

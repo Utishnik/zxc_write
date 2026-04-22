@@ -24,6 +24,7 @@ fn main() {
         return;
     }
     let pid = fnd_name.unwrap();
+    println!("[DEBUG] pid: {}", pid);
     let find_res = find_strings(pid);
     if find_res.is_err() {
         println!("find strings failed: None");

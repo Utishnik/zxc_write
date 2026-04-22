@@ -10,7 +10,7 @@ use windows::{
             Threading::*,
         },
     },
-    core::{PCSTR, PCWSTR},
+    core::Error,
 };
 
 pub fn is_readable(protect: PAGE_PROTECTION_FLAGS) -> bool {
@@ -210,7 +210,7 @@ pub struct ExtractResult {
 pub enum ScanProcessStringsError {
     ReadProcessMemory,
     OpenProcess,
-    VirtualQueryEx,
+    VirtualQueryEx(usize),
 }
 
 /// # Panics
@@ -235,9 +235,8 @@ pub fn scan_process_strings(
             Ok(ok) => {
                 let mbi: *mut MEMORY_BASIC_INFORMATION = ptr::null_mut();
                 let addr: Option<*const c_void> = None;
-                if let ret = VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>())
-                    && ret != 0
-                {
+                let vqe = VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
+                if vqe != 0 {
                     let get_protect = (*mbi).Protect;
                     let get_state = (*mbi).State;
                     let reg_size = (*mbi).RegionSize;
@@ -249,10 +248,7 @@ pub fn scan_process_strings(
                         let byte_read: Option<*mut usize> = Some(ptr::null_mut());
                         if ReadProcessMemory(ok, base_addr, ptr_buf, reg_size, byte_read).is_ok() {
                             let res = byte_read.map_or_else(
-                                || {
-                                    println!("LOG: error byte_read is none");
-                                    None
-                                },
+                                || None,
                                 |x| {
                                     let extract_ascii_str = extract_ascii_strings(
                                         ptr_buf as *const u8,
@@ -277,16 +273,14 @@ pub fn scan_process_strings(
                             );
                             return Ok(res);
                         } else {
-                            println!("LOG: error fail ReadProcessMemory");
                             return Err(ScanProcessStringsError::ReadProcessMemory);
                         }
                     }
                 } else {
-                    return Err(ScanProcessStringsError::VirtualQueryEx);
+                    return Err(ScanProcessStringsError::VirtualQueryEx(vqe));
                 }
             }
             Err(e) => {
-                println!("OpenProcess failed: {}", e);
                 return Err(ScanProcessStringsError::OpenProcess);
             }
         }
