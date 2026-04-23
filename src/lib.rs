@@ -45,4 +45,5 @@
 pub mod error_hand;
 pub mod find_proccess;
 pub mod mem;
+pub mod modules;
 pub mod utils;
