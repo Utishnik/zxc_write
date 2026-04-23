@@ -1,12 +1,13 @@
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_ACCESS_DENIED, ERROR_INVALID_HANDLE, ERROR_INVALID_PARAMETER,
-    ERROR_PARTIAL_COPY, GetLastError, HANDLE, LUID,
+    ERROR_PARTIAL_COPY, GetLastError, HANDLE, HLOCAL, LUID, LocalFree,
 };
 
 use windows::Win32::System::Memory::{MEMORY_BASIC_INFORMATION, PAGE_NOACCESS, VirtualQueryEx};
 
 use windows::Win32::System::Diagnostics::Debug::{
-    FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_IGNORE_INSERTS, FormatMessageW,
+    FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_IGNORE_INSERTS,
+    FormatMessageW,
 };
 use windows::Win32::System::Threading::{
     GetCurrentProcess, GetProcessId, OpenProcess, OpenProcessToken, PROCESS_QUERY_INFORMATION,
@@ -23,6 +24,55 @@ use std::ptr::null_mut;
 use windows::core::{Error, PCWSTR, PWSTR};
 type LPCVOID = *const core::ffi::c_void;
 use core::marker::PhantomData;
+
+pub(crate) fn get_last_error_message_array() -> Result<String, u32> {
+    let error_code = unsafe { GetLastError().0 };
+    let mut buffer = [0u16; 512];
+    let chars_copied = unsafe {
+        FormatMessageW(
+            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+            None,
+            error_code,
+            0, // язык по умолчанию
+            PWSTR(buffer.as_mut_ptr()),
+            buffer.len() as u32,
+            None,
+        )
+    };
+    if chars_copied == 0 {
+        return Err(error_code);
+    }
+    let len = chars_copied as usize;
+    let trimmed = &buffer[..len];
+    let msg = String::from_utf16_lossy(trimmed);
+    Ok(msg.trim_end_matches(['\r', '\n']).to_string())
+}
+
+pub(crate) fn get_last_error_message_dyn() -> Result<String, u32> {
+    let error_code = unsafe { GetLastError().0 };
+    let buffer: PWSTR = PWSTR(std::ptr::null_mut());
+    let chars_copied = unsafe {
+        FormatMessageW(
+            FORMAT_MESSAGE_FROM_SYSTEM
+                | FORMAT_MESSAGE_ALLOCATE_BUFFER
+                | FORMAT_MESSAGE_IGNORE_INSERTS,
+            None,
+            error_code,
+            0,
+            buffer, // указатель на указатель! &mut *mut u16
+            0,      // размер игнорируется при ALLOCATE_BUFFER
+            None,
+        )
+    };
+    if chars_copied == 0 || buffer.is_null() {
+        return Err(error_code);
+    }
+    let slice = unsafe { std::slice::from_raw_parts(buffer.0, chars_copied as usize) };
+    let msg = String::from_utf16_lossy(slice);
+    let hmem = HLOCAL(buffer.0 as *mut _);
+    unsafe { LocalFree(Some(hmem)) };
+    Ok(msg.trim_end_matches(['\r', '\n']).to_string())
+}
 
 ///# Safety
 pub unsafe fn get_last_error_as_string() -> String {
@@ -44,6 +94,7 @@ pub unsafe fn get_last_error_as_string() -> String {
         let _phantom: PhantomData<&mut u16> = PhantomData::<&mut u16>;
 
         if chars_copied > 0 {
+            dbg!("[DEBUG] chars_copied > 0");
             // FormatMessageW не включает null-terminator в возвращаемую длину
             let cast_mut = mut_ptr_cast_slice::<u16>(buffer.0, chars_copied as usize, _phantom);
             String::from_utf16_lossy(&cast_mut[..chars_copied as usize])

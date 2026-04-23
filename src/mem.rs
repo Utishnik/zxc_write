@@ -298,6 +298,8 @@ pub fn scan_process_strings(
                         let dbg_dmr = describe_memory_region(&*mbi);
                         println!("[DEBUG] {}", dbg_dmr);
                     } else {
+                        let err = get_last_error_as_string();
+                        println!("last err: {}", err);
                         println!("mbi is null ptr");
                     }
 
