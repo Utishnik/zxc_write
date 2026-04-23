@@ -250,6 +250,8 @@ pub fn scan_process_strings(
                 let mbi: *mut MEMORY_BASIC_INFORMATION = ptr::null_mut();
                 let addr: Option<*const c_void> = None;
                 let vqe = VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
+                use crate::error_hand::check_mbi::*;
+
                 if vqe != 0 {
                     let get_protect = (*mbi).Protect;
                     let get_state = (*mbi).State;
@@ -291,6 +293,13 @@ pub fn scan_process_strings(
                         }
                     }
                 } else {
+                    if !mbi.is_null() {
+                        let dbg_dmr = describe_memory_region(&*mbi);
+                        println!("[DEBUG] {}", dbg_dmr);
+                    } else {
+                        println!("mbi is null ptr");
+                    }
+
                     let mut err_ret = std::mem::MaybeUninit::<VirtualQueryExErr>::uninit();
                     use std::ptr::addr_of_mut;
                     let old_ptr_mut = addr_of_mut!((*err_ret.as_mut_ptr()).old);

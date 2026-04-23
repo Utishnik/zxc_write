@@ -179,6 +179,53 @@ pub fn virtual_query_ex_err_debug(last_err: u32) {
         }
     }
 }
+use windows::Win32::System::Memory::*;
+pub fn describe_page_protection(protect: PAGE_PROTECTION_FLAGS) -> String {
+    let mut desc = String::new();
+
+    // Основные права
+    let basic = match protect
+        & !(PAGE_GUARD
+            | PAGE_NOCACHE
+            | PAGE_WRITECOMBINE
+            | PAGE_TARGETS_INVALID
+            | PAGE_TARGETS_NO_UPDATE)
+    {
+        PAGE_NOACCESS => "NOACCESS",
+        PAGE_READONLY => "READONLY",
+        PAGE_READWRITE => "READWRITE",
+        PAGE_WRITECOPY => "WRITECOPY",
+        PAGE_EXECUTE => "EXECUTE",
+        PAGE_EXECUTE_READ => "EXECUTE_READ",
+        PAGE_EXECUTE_READWRITE => "EXECUTE_READWRITE",
+        PAGE_EXECUTE_WRITECOPY => "EXECUTE_WRITECOPY",
+        _ => "UNKNOWN_PROTECT",
+    };
+    desc.push_str(basic);
+
+    // Дополнительные флаги
+    if protect.0 & PAGE_GUARD.0 != 0 {
+        desc.push_str(" | GUARD");
+    }
+    if protect.0 & PAGE_NOCACHE.0 != 0 {
+        desc.push_str(" | NOCACHE");
+    }
+    if protect.0 & PAGE_WRITECOMBINE.0 != 0 {
+        desc.push_str(" | WRITECOMBINE");
+    }
+    if protect.0 & PAGE_TARGETS_INVALID.0 != 0 {
+        desc.push_str(" | TARGETS_INVALID");
+    }
+    if protect.0 & PAGE_TARGETS_NO_UPDATE.0 != 0 {
+        desc.push_str(" | TARGETS_NO_UPDATE");
+    }
+
+    if desc.is_empty() {
+        "no flags".to_string()
+    } else {
+        desc
+    }
+}
 
 pub mod check_mbi {
     use windows::Win32::System::Memory::*;
@@ -209,58 +256,11 @@ pub mod check_mbi {
         let protect_str = if mbi.State == MEM_RESERVE {
             "no access (reserved)".to_string()
         } else if mbi.State == MEM_COMMIT {
-            describe_page_protection(mbi.Protect)
+            crate::error_hand::describe_page_protection(mbi.Protect)
         } else {
             "N/A".to_string()
         };
 
         format!("{} - {} - [{}]", state_str, type_str, protect_str)
-    }
-
-    pub fn describe_page_protection(protect: PAGE_PROTECTION_FLAGS) -> String {
-        let mut desc = String::new();
-
-        // Основные права
-        let basic = match protect
-            & !(PAGE_GUARD
-                | PAGE_NOCACHE
-                | PAGE_WRITECOMBINE
-                | PAGE_TARGETS_INVALID
-                | PAGE_TARGETS_NO_UPDATE)
-        {
-            PAGE_NOACCESS => "NOACCESS",
-            PAGE_READONLY => "READONLY",
-            PAGE_READWRITE => "READWRITE",
-            PAGE_WRITECOPY => "WRITECOPY",
-            PAGE_EXECUTE => "EXECUTE",
-            PAGE_EXECUTE_READ => "EXECUTE_READ",
-            PAGE_EXECUTE_READWRITE => "EXECUTE_READWRITE",
-            PAGE_EXECUTE_WRITECOPY => "EXECUTE_WRITECOPY",
-            _ => "UNKNOWN_PROTECT",
-        };
-        desc.push_str(basic);
-
-        // Дополнительные флаги
-        if protect.0 & PAGE_GUARD.0 != 0 {
-            desc.push_str(" | GUARD");
-        }
-        if protect.0 & PAGE_NOCACHE.0 != 0 {
-            desc.push_str(" | NOCACHE");
-        }
-        if protect.0 & PAGE_WRITECOMBINE.0 != 0 {
-            desc.push_str(" | WRITECOMBINE");
-        }
-        if protect.0 & PAGE_TARGETS_INVALID.0 != 0 {
-            desc.push_str(" | TARGETS_INVALID");
-        }
-        if protect.0 & PAGE_TARGETS_NO_UPDATE.0 != 0 {
-            desc.push_str(" | TARGETS_NO_UPDATE");
-        }
-
-        if desc.is_empty() {
-            "no flags".to_string()
-        } else {
-            desc
-        }
     }
 }
