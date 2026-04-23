@@ -1,5 +1,6 @@
 use std::{ffi::c_void, ptr};
 
+use crate::error_hand::*;
 use windows::{
     Win32::{
         Foundation::*,
@@ -207,10 +208,27 @@ pub struct ExtractResult {
 }
 
 #[derive(Debug)]
+pub struct VirtualQueryExErr {
+    pub old: Result<MEMORY_BASIC_INFORMATION, VirtualQueryErr>,
+    pub new: Result<MEMORY_BASIC_INFORMATION, VirtualQueryErr>,
+}
+
+#[derive(Debug)]
 pub enum ScanProcessStringsError {
     ReadProcessMemory,
     OpenProcess(Error),
-    VirtualQueryEx(usize),
+    VirtualQueryEx(VirtualQueryExErr),
+    VirtualQueryExNonePtr,
+}
+
+pub unsafe fn open_read_process(dwprocessid: u32) -> Result<HANDLE, Error> {
+    unsafe {
+        OpenProcess(
+            PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
+            false,
+            dwprocessid,
+        )
+    }
 }
 
 /// # Panics
@@ -226,11 +244,7 @@ pub fn scan_process_strings(
         max_len: Some(25),
     };
     unsafe {
-        let h_process = OpenProcess(
-            PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
-            false,
-            dwprocessid,
-        );
+        let h_process = open_read_process(dwprocessid);
         match h_process {
             Ok(ok) => {
                 let mbi: *mut MEMORY_BASIC_INFORMATION = ptr::null_mut();
@@ -277,7 +291,44 @@ pub fn scan_process_strings(
                         }
                     }
                 } else {
-                    return Err(ScanProcessStringsError::VirtualQueryEx(vqe));
+                    let mut err_ret = std::mem::MaybeUninit::<VirtualQueryExErr>::uninit();
+                    use std::ptr::addr_of_mut;
+                    let old_ptr_mut = addr_of_mut!((*err_ret.as_mut_ptr()).old);
+                    let new_ptr_mut = addr_of_mut!((*err_ret.as_mut_ptr()).new);
+
+                    //check старый hand
+                    {
+                        let h_process = h_process.unwrap(); //безопасно потому что у нас выше и если не там ошибка то ScanProcessStringsError::VirtualQueryEx
+                        let vqe =
+                            VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
+                        if let Some(x) = addr {
+                            *old_ptr_mut = virtual_query_with_diagnostics(h_process, x);
+                        } else {
+                            return Err(ScanProcessStringsError::VirtualQueryExNonePtr);
+                        }
+                    }
+                    //check new open process
+                    {
+                        let err_hand = open_read_process(dwprocessid);
+                        if let Err(e) = err_hand {
+                            println!("[DEBUG] find_strings err_hand Err: {:?}", e);
+                        } else if let Ok(ok) = err_hand {
+                            let err_hand = ok;
+                            let vqe = VirtualQueryEx(
+                                ok,
+                                addr,
+                                mbi,
+                                size_of::<MEMORY_BASIC_INFORMATION>(),
+                            );
+                            if let Some(x) = addr {
+                                *new_ptr_mut = virtual_query_with_diagnostics(err_hand, x);
+                            } else {
+                                return Err(ScanProcessStringsError::VirtualQueryExNonePtr);
+                            }
+                        }
+                    }
+                    let initialized = err_ret.assume_init();
+                    return Err(ScanProcessStringsError::VirtualQueryEx(initialized));
                 }
             }
             Err(e) => {
