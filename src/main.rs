@@ -2,6 +2,11 @@ use vec_string::*;
 use zxc_write::find_proccess::*;
 use zxc_write::mem::*;
 
+fn wait_close() {
+    let mut buffer: String = String::new();
+    let _ = std::io::stdin().read_line(&mut buffer);
+}
+
 fn find_strings(dwprocessid: u32) -> Result<ExtractResult, ()> {
     let strs = scan_process_strings(dwprocessid);
     if let Err(e) = strs {
@@ -21,6 +26,7 @@ fn main() {
     let fnd_name = find_process_by_name("firefox.exe");
     if let Err(e) = fnd_name {
         println!("Error: {:?}", e);
+        wait_close();
         return;
     }
     let pid = fnd_name.unwrap();
@@ -28,6 +34,7 @@ fn main() {
     let find_res = find_strings(pid);
     if find_res.is_err() {
         println!("find strings failed: None");
+        wait_close();
         return;
     }
     let find_res = find_res.unwrap();
@@ -36,4 +43,5 @@ fn main() {
         "Unicode:\t{}",
         find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
     );
+    wait_close();
 }

@@ -136,10 +136,10 @@ pub unsafe fn virtual_query_with_diagnostics(
             let error = GetLastError();
             let error_msg = get_last_error_as_string();
 
-            dbg!("VirtualQueryEx FAILED");
-            dbg!("Return code: {}", result);
-            dbg!(format!("Last error: {} (0x{:08X})", error.0, error.0));
-            dbg!("Error message: {}", error_msg.clone());
+            dbg!("VirtualQueryEx FAILED\n");
+            dbg!("Return code: {}\n", result);
+            dbg!(format!("Last error: {} (0x{:08X})\n", error.0, error.0));
+            dbg!("Error message: {}\n", error_msg.clone());
 
             virtual_query_ex_err_debug(error.0);
             return Err(VirtualQueryErr::VirtualQueryExErr(VirtualQueryExErr {
@@ -150,12 +150,12 @@ pub unsafe fn virtual_query_with_diagnostics(
         }
     }
 
-    dbg!(format!("VirtualQueryEx SUCCESS"));
-    dbg!(format!("Base Address: {:p}", mbi.BaseAddress));
-    dbg!(format!("Region Size: 0x{:X} bytes", mbi.RegionSize));
-    dbg!(format!("State: 0x{:X}", mbi.State.0));
-    dbg!(format!("Protect: 0x{:X}", mbi.Protect.0));
-    dbg!(format!("Type: 0x{:X}", mbi.Type.0));
+    dbg!(format!("VirtualQueryEx SUCCESS\n"));
+    dbg!(format!("Base Address: {:p}\n", mbi.BaseAddress));
+    dbg!(format!("Region Size: 0x{:X} bytes\n", mbi.RegionSize));
+    dbg!(format!("State: 0x{:X}\n", mbi.State.0));
+    dbg!(format!("Protect: 0x{:X}\n", mbi.Protect.0));
+    dbg!(format!("Type: 0x{:X}\n", mbi.Type.0));
 
     Ok(mbi)
 }
@@ -163,19 +163,104 @@ pub unsafe fn virtual_query_with_diagnostics(
 pub fn virtual_query_ex_err_debug(last_err: u32) {
     match last_err {
         val if val == ERROR_ACCESS_DENIED.0 => {
-            dbg!("ERROR_ACCESS_DENIED");
+            dbg!("ERROR_ACCESS_DENIED\n");
         }
         val if val == ERROR_INVALID_PARAMETER.0 => {
-            dbg!("ERROR_INVALID_PARAMETER");
+            dbg!("ERROR_INVALID_PARAMETER\n");
         }
         val if val == ERROR_INVALID_HANDLE.0 => {
-            dbg!("ERROR_INVALID_HANDLE");
+            dbg!("ERROR_INVALID_HANDLE\n");
         }
         val if val == ERROR_PARTIAL_COPY.0 => {
-            dbg!("ERROR_PARTIAL_COPY");
+            dbg!("ERROR_PARTIAL_COPY\n");
         }
         val => {
-            dbg!("другая {}", val);
+            dbg!("другая {}\n", val);
+        }
+    }
+}
+
+pub mod check_mbi {
+    use windows::Win32::System::Memory::*;
+    pub fn describe_memory_region(mbi: &MEMORY_BASIC_INFORMATION) -> String {
+        // Описание состояния страницы
+        let state_str = match mbi.State {
+            MEM_COMMIT => "COMMIT",
+            MEM_RESERVE => "RESERVE",
+            MEM_FREE => "FREE",
+            other => return format!("UNKNOWN_STATE(0x{:X})", other.0),
+        };
+
+        // Для свободной памяти тип и защита не определены
+        if mbi.State == MEM_FREE {
+            return format!("{} (свободная область)", state_str);
+        }
+
+        // Для зарезервированной памяти тип может быть указан, но защита обычно 0
+        let type_str = match mbi.Type {
+            MEM_IMAGE => "IMAGE (образ EXE/DLL)",
+            MEM_MAPPED => "MAPPED (отображённый файл)",
+            MEM_PRIVATE => "PRIVATE (куча/стек)",
+            val if val.0 == 0 => "NOT SPECIFIED", // для MEM_RESERVE иногда 0
+            other => return format!("{} - UNKNOWN_TYPE(0x{:X})", state_str, other.0),
+        };
+
+        // Для зарезервированной памяти защиты нет (Protect = 0)
+        let protect_str = if mbi.State == MEM_RESERVE {
+            "no access (reserved)".to_string()
+        } else if mbi.State == MEM_COMMIT {
+            describe_page_protection(mbi.Protect)
+        } else {
+            "N/A".to_string()
+        };
+
+        format!("{} - {} - [{}]", state_str, type_str, protect_str)
+    }
+
+    pub fn describe_page_protection(protect: PAGE_PROTECTION_FLAGS) -> String {
+        let mut desc = String::new();
+
+        // Основные права
+        let basic = match protect
+            & !(PAGE_GUARD
+                | PAGE_NOCACHE
+                | PAGE_WRITECOMBINE
+                | PAGE_TARGETS_INVALID
+                | PAGE_TARGETS_NO_UPDATE)
+        {
+            PAGE_NOACCESS => "NOACCESS",
+            PAGE_READONLY => "READONLY",
+            PAGE_READWRITE => "READWRITE",
+            PAGE_WRITECOPY => "WRITECOPY",
+            PAGE_EXECUTE => "EXECUTE",
+            PAGE_EXECUTE_READ => "EXECUTE_READ",
+            PAGE_EXECUTE_READWRITE => "EXECUTE_READWRITE",
+            PAGE_EXECUTE_WRITECOPY => "EXECUTE_WRITECOPY",
+            _ => "UNKNOWN_PROTECT",
+        };
+        desc.push_str(basic);
+
+        // Дополнительные флаги
+        if protect.0 & PAGE_GUARD.0 != 0 {
+            desc.push_str(" | GUARD");
+        }
+        if protect.0 & PAGE_NOCACHE.0 != 0 {
+            desc.push_str(" | NOCACHE");
+        }
+        if protect.0 & PAGE_WRITECOMBINE.0 != 0 {
+            desc.push_str(" | WRITECOMBINE");
+        }
+        if protect.0 & PAGE_TARGETS_INVALID.0 != 0 {
+            desc.push_str(" | TARGETS_INVALID");
+        }
+        if protect.0 & PAGE_TARGETS_NO_UPDATE.0 != 0 {
+            desc.push_str(" | TARGETS_NO_UPDATE");
+        }
+
+        if desc.is_empty() {
+            "no flags".to_string()
+        } else {
+            desc
         }
     }
 }

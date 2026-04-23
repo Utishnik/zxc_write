@@ -304,6 +304,7 @@ pub fn scan_process_strings(
                         if let Some(x) = addr {
                             *old_ptr_mut = virtual_query_with_diagnostics(h_process, x);
                         } else {
+                            println!("[DEBUG] None ptr старый hand");
                             return Err(ScanProcessStringsError::VirtualQueryExNonePtr);
                         }
                     }
@@ -323,6 +324,7 @@ pub fn scan_process_strings(
                             if let Some(x) = addr {
                                 *new_ptr_mut = virtual_query_with_diagnostics(err_hand, x);
                             } else {
+                                println!("[DEBUG] None ptr new hand\n");
                                 return Err(ScanProcessStringsError::VirtualQueryExNonePtr);
                             }
                         }
