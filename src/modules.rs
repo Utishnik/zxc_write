@@ -5,13 +5,14 @@ use windows::Win32::System::Diagnostics::ToolHelp::{
 };
 use windows::core::Error;
 
+#[derive(Debug)]
 pub struct ModuleInfo {
     pub name: String,
-    pub modBaseAddr: *mut u8,
-    pub modBaseSize: u32,
+    pub mod_base_addr: *mut u8,
+    pub mod_base_size: u32,
     pub path: String,
 }
-
+#[derive(Debug)]
 pub enum SnapshotErr {
     Err(Error),
     InvalidHandleValue,
@@ -61,8 +62,8 @@ pub fn list_modules(pid: u32) -> Result<Vec<ModuleInfo>, SnapshotErr> {
 
                 let module_info: ModuleInfo = ModuleInfo {
                     name: name_fmt,
-                    modBaseAddr: entry.modBaseAddr,
-                    modBaseSize: entry.modBaseSize,
+                    mod_base_addr: entry.modBaseAddr,
+                    mod_base_size: entry.modBaseSize,
                     path: path_fmt,
                 };
 

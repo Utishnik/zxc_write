@@ -21,6 +21,21 @@ fn find_strings(dwprocessid: u32) -> Result<ExtractResult, ()> {
     Ok(strs.unwrap())
 }
 
+fn get_childs(pid: u32) {
+    let childs = get_child_processes(pid);
+    if let Err(e) = childs {
+        println!("[ERROR] get_childs {:?}", e);
+    } else if let Ok(ok) = childs {
+        let names = ok
+            .iter()
+            .map(|x| format!("name exe {}\tpid: {}", x.1.clone(), x.0))
+            .collect::<Vec<String>>();
+        println!("{}", names.vec_string(DEFAULT_FORMAT_RULE))
+    } else {
+        unreachable!();
+    }
+}
+
 fn main() {
     //find_strings();
     let fnd_name = find_process_by_name("firefox.exe");
@@ -31,6 +46,8 @@ fn main() {
     }
     let pid = fnd_name.unwrap();
     println!("[DEBUG] pid: {}", pid);
+    get_childs(pid);
+    return; //
     let find_res = find_strings(pid);
     if find_res.is_err() {
         println!("find strings failed: None");

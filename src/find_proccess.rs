@@ -121,6 +121,7 @@ pub fn get_all_processes_detailed() -> Result<Vec<ProcessInfo>, FindProccesError
     Ok(list)
 }
 
+///u32 - pid / String - exe_name
 pub fn get_child_processes(parent_pid: u32) -> Result<Vec<(u32, String)>, Error> {
     let mut children = Vec::new();
     unsafe {
