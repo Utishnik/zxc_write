@@ -121,6 +121,40 @@ pub fn get_all_processes_detailed() -> Result<Vec<ProcessInfo>, FindProccesError
     Ok(list)
 }
 
+pub fn get_child_processes(parent_pid: u32) -> Result<Vec<(u32, String)>, Error> {
+    let mut children = Vec::new();
+    unsafe {
+        let snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+        if let Err(e) = snapshot {
+            return Err(e);
+        }
+        let snapshot = snapshot.unwrap_unchecked(); //safe !!!
+        let mut entry = PROCESSENTRY32 {
+            dwSize: std::mem::size_of::<PROCESSENTRY32>() as u32,
+            ..PROCESSENTRY32::default()
+        };
+
+        if Process32First(snapshot, &mut entry).is_ok() {
+            loop {
+                if entry.th32ParentProcessID == parent_pid {
+                    let exe_name = std::ffi::CStr::from_ptr(entry.szExeFile.as_ptr())
+                        .to_string_lossy() // Потеря для не-UTF8 символов
+                        .into_owned();
+                    children.push((
+                        entry.th32ProcessID,
+                        exe_name.trim_end_matches('\0').to_string(),
+                    ));
+                }
+                if Process32Next(snapshot, &mut entry).is_err() {
+                    break;
+                }
+            }
+        }
+        let _: windows::core::Result<()> = CloseHandle(snapshot);
+    }
+    Ok(children)
+}
+
 #[test]
 fn test_get_all_processes_detailed() {
     let f = get_all_processes_detailed();

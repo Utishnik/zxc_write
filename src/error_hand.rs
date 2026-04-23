@@ -27,7 +27,7 @@ use core::marker::PhantomData;
 
 pub(crate) fn get_last_error_message_array() -> Result<String, u32> {
     let error_code = unsafe { GetLastError().0 };
-    let mut buffer = [0u16; 512];
+    let mut buffer = [0_u16; 512];
     let chars_copied = unsafe {
         FormatMessageW(
             FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
@@ -75,34 +75,28 @@ pub(crate) fn get_last_error_message_dyn() -> Result<String, u32> {
 }
 
 ///# Safety
-pub unsafe fn get_last_error_as_string() -> String {
+pub unsafe fn get_last_error_as_string_array() -> String {
     // 1. GetLastError() возвращает обёртку WIN32_ERROR, извлекаем u32 через .0
-    unsafe {
-        let error_code = GetLastError().0;
-        let buffer: PWSTR = PWSTR(std::ptr::null_mut());
+    let res = get_last_error_message_array();
+    if let Err(e) = res {
+        format!("Unknown error (code: {})", e)
+    } else if let Ok(ok) = res {
+        ok
+    } else {
+        unreachable!();
+    }
+}
 
-        let chars_copied = FormatMessageW(
-            // 2. Добавляем IGNORE_INSERTS, чтобы не падать на сообщениях с %1, %2 и т.д.
-            FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-            None,
-            error_code,
-            0,
-            buffer,              // 3. Передаём сырой указатель, а не ссылку на Vec
-            buffer.len() as u32, // 4. Размер буфера передаётся отдельным параметром
-            None,
-        );
-        let _phantom: PhantomData<&mut u16> = PhantomData::<&mut u16>;
-
-        if chars_copied > 0 {
-            dbg!("[DEBUG] chars_copied > 0");
-            // FormatMessageW не включает null-terminator в возвращаемую длину
-            let cast_mut = mut_ptr_cast_slice::<u16>(buffer.0, chars_copied as usize, _phantom);
-            String::from_utf16_lossy(&cast_mut[..chars_copied as usize])
-                .trim()
-                .to_string()
-        } else {
-            format!("Unknown error code: {}", error_code)
-        }
+///# Safety
+pub unsafe fn get_last_error_as_string_dyn() -> String {
+    // 1. GetLastError() возвращает обёртку WIN32_ERROR, извлекаем u32 через .0
+    let res = get_last_error_message_dyn();
+    if let Err(e) = res {
+        format!("Unknown error (code: {})", e)
+    } else if let Ok(ok) = res {
+        ok
+    } else {
+        unreachable!();
     }
 }
 
@@ -153,7 +147,7 @@ pub unsafe fn virtual_query_with_diagnostics(
     if pid == 0 {
         return Err(VirtualQueryErr::GetProcessId(format!(
             "Failed to get process ID: {}",
-            unsafe { get_last_error_as_string() }
+            unsafe { get_last_error_as_string_array() }
         )));
     }
     unsafe {
@@ -169,7 +163,10 @@ pub unsafe fn virtual_query_with_diagnostics(
                 println!("[DEBUG] test_handle err code: {}", e);
                 return Err(VirtualQueryErr::OpenProcess(
                     e,
-                    format!("Handle validation failed: {}", get_last_error_as_string()),
+                    format!(
+                        "Handle validation failed: {}",
+                        get_last_error_as_string_array()
+                    ),
                 ));
             }
         }
@@ -185,7 +182,7 @@ pub unsafe fn virtual_query_with_diagnostics(
 
         if result == 0 {
             let error = GetLastError();
-            let error_msg = get_last_error_as_string();
+            let error_msg = get_last_error_as_string_array();
 
             dbg!("VirtualQueryEx FAILED\n");
             dbg!("Return code: {}\n", result);
