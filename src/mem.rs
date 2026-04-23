@@ -249,10 +249,10 @@ pub fn scan_process_strings(
             Ok(ok) => {
                 let mbi: *mut MEMORY_BASIC_INFORMATION = ptr::null_mut();
                 let addr: Option<*const c_void> = None;
-                let vqe = VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
+                let mut vqe = VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
                 use crate::error_hand::check_mbi::*;
-
-                if vqe != 0 {
+                while vqe != 0 {
+                    vqe = VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
                     let get_protect = (*mbi).Protect;
                     let get_state = (*mbi).State;
                     let reg_size = (*mbi).RegionSize;
@@ -292,7 +292,8 @@ pub fn scan_process_strings(
                             return Err(ScanProcessStringsError::ReadProcessMemory);
                         }
                     }
-                } else {
+                }
+                if vqe == 0 {
                     if !mbi.is_null() {
                         let dbg_dmr = describe_memory_region(&*mbi);
                         println!("[DEBUG] {}", dbg_dmr);
