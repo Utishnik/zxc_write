@@ -46,19 +46,17 @@ pub fn list_modules_standard(pid: u32) -> Result<Option<Vec<String>>> {
     Ok(Some(ret_vec))
 }
 
-pub fn list_modules_ex(pid: u32) -> Result<Option<Vec<String>>> {
+use windows::Win32::System::ProcessStatus::ENUM_PROCESS_MODULES_EX_FLAGS;
+pub fn list_modules_ex(
+    pid: u32,
+    flag: ENUM_PROCESS_MODULES_EX_FLAGS,
+) -> Result<Option<Vec<String>>> {
     let handle = unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid)? };
     let _guard = HandleGuard(handle);
 
     let mut bytes_needed: u32 = 0;
     unsafe {
-        EnumProcessModulesEx(
-            handle,
-            std::ptr::null_mut(),
-            0,
-            &mut bytes_needed,
-            LIST_MODULES_ALL,
-        )?;
+        EnumProcessModulesEx(handle, std::ptr::null_mut(), 0, &mut bytes_needed, flag)?;
     }
 
     if bytes_needed == 0 {
@@ -75,7 +73,7 @@ pub fn list_modules_ex(pid: u32) -> Result<Option<Vec<String>>> {
             modules.as_mut_ptr(),
             bytes_needed,
             &mut bytes_needed,
-            LIST_MODULES_ALL,
+            flag,
         )?;
     }
     let mut ret_vec: Vec<String> = Vec::with_capacity(bytes_needed as usize);
