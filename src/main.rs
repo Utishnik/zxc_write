@@ -9,7 +9,7 @@ fn wait_close() {
 }
 
 fn find_strings(dwprocessid: u32) -> Result<ExtractResult, ()> {
-    let strs = scan_process_strings(dwprocessid);
+    let strs = scan_process_strings_lossy(dwprocessid, true);
     if let Err(e) = strs {
         println!("[DEBUG] strs Err: {:?}", e);
         return Err(());

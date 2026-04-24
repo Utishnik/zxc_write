@@ -172,13 +172,25 @@ pub unsafe fn extract_unicode_strings(
                     }
                     last_val_j = j.0 + i;
                 }
+                if wstr.len() < 100 {
+                    println!("{wstr}");
+                }
                 if wstr.len() >= min_len && wstr.len() <= max_len {
                     extract_res.push(ExtractStr {
                         base_addr: base_ptr.add(i),
                         str: wstr,
                     });
                 }
-                i += last_val_j - 2;
+                if last_val_j < 2 {
+                    continue;
+                }
+                let add = i.checked_add(last_val_j - 2);
+                if add.is_none() {
+                    continue;
+                }
+                let add = add.unwrap_unchecked();
+
+                i += add;
             }
             i += 2;
         }
@@ -231,6 +243,7 @@ pub unsafe fn open_read_process(dwprocessid: u32) -> Result<HANDLE, Error> {
     }
 }
 
+// TODO ! МЕНЬШЕ UNSAFE
 /// # Panics
 /// если неверный конфиг
 #[must_use]
@@ -313,7 +326,7 @@ pub fn scan_process_strings(
                     //check старый hand
                     {
                         let h_process = h_process.unwrap(); //безопасно потому что у нас выше и если не там ошибка то ScanProcessStringsError::VirtualQueryEx
-                        let vqe =
+                        let _: usize =
                             VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
                         if let Some(x) = addr {
                             *old_ptr_mut = virtual_query_with_diagnostics(h_process, x);
@@ -329,7 +342,7 @@ pub fn scan_process_strings(
                             println!("[DEBUG] find_strings err_hand Err: {:?}", e);
                         } else if let Ok(ok) = err_hand {
                             let err_hand = ok;
-                            let vqe = VirtualQueryEx(
+                            let _: usize = VirtualQueryEx(
                                 ok,
                                 addr,
                                 mbi,
@@ -357,11 +370,12 @@ pub fn scan_process_strings(
 
 /// # Panics
 /// если неверный конфиг
-#[doc = "не прирывается при нулевом VirtualQueryEx"]
+#[doc = "не прирывается при нулевом VirtualQueryEx и не закоммиченной/не is_readable"]
 ///# Errors
-/// 
+///
 pub fn scan_process_strings_lossy(
     dwprocessid: u32,
+    vqe_ignore: bool,
 ) -> Result<Option<ExtractResult>, ScanProcessStringsError> {
     let cfg_ascii = StringCfg::default();
     let cfg_unicode = StringCfg {
@@ -390,14 +404,17 @@ pub fn scan_process_strings_lossy(
             )
         };
 
-        if result == 0 {
+        if result == 0 && !vqe_ignore {
             let err = unsafe { GetLastError() };
             if err == ERROR_INVALID_ADDRESS {
                 println!("[DEBUG] Конец адресного пространства: {:p}", addr);
             } else {
                 println!("[DEBUG] VirtualQueryEx ошибка: {:?}, addr: {:p}", err, addr);
             }
-            break; // Выходим — больше нет регионов
+            break; // Выходим
+        } else if result == 0 {
+            let err = unsafe { GetLastError() };
+            println!("[LOG] scan_process_strings_lossy: {:?}", err);
         }
 
         let base_addr = mbi.BaseAddress;
@@ -405,17 +422,16 @@ pub fn scan_process_strings_lossy(
         let protect = mbi.Protect;
         let state = mbi.State;
 
-        // Пропускаем невалидные/нечитаемые регионы, но НЕ выходим — продолжаем!
         if state != MEM_COMMIT || !is_readable(protect) {
-            let next = (base_addr as usize).saturating_add(reg_size);
-            if next == 0 || next <= addr as usize {
+            let next = unsafe { base_addr.add(reg_size) };
+            if next.is_null() || next <= addr as _ {
                 break;
             }
             addr = next as *const c_void;
             continue;
         }
 
-        // Защита от огромных регионов (например, 2 GB)
+        // Защита от огромных регионов
         const MAX_REGION_SIZE: usize = 100 * 1024 * 1024;
         let read_size = if reg_size > MAX_REGION_SIZE {
             MAX_REGION_SIZE
@@ -463,9 +479,9 @@ pub fn scan_process_strings_lossy(
         // Если ReadProcessMemory не сработал — просто пропускаем регион и идём дальше
 
         // Переходим к следующему региону
-        let next = (base_addr as usize).saturating_add(reg_size);
-        if next == 0 || next <= addr as usize {
-            break; // Защита от переполнения
+        let next = unsafe { base_addr.add(reg_size) };
+        if next.is_null() || next <= addr as _ {
+            break;
         }
         addr = next as *const c_void;
     }
