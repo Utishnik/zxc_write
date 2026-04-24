@@ -387,7 +387,13 @@ pub fn scan_process_strings(
     unreachable!();
 }
 
-pub fn scan_dynamic_mem(pid: u32, jmp_len: usize, max_cap: usize) -> windows::core::Result<()> {
+pub fn scan_dynamic_mem<F: Fn(MEMORY_BASIC_INFORMATION) -> bool>(
+    pid: u32,
+    jmp_len: usize,
+    max_cap: usize,
+    filter: Option<F>,
+) -> windows::core::Result<Vec<ReadProcessMemoryResult>> {
+    let mut ret: Vec<ReadProcessMemoryResult> = Vec::new();
     let h_process =
         unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid)? };
 
@@ -424,7 +430,12 @@ pub fn scan_dynamic_mem(pid: u32, jmp_len: usize, max_cap: usize) -> windows::co
             let size = mbi.RegionSize.min(max_cap);
             let mut buf = vec![0_u8; size];
             let mut read = 0_usize;
-
+            if let Some(ref x) = filter
+                && !x(mbi)
+            {
+                addr = next as *const _; //skip
+                continue;
+            }
             let ok = unsafe {
                 ReadProcessMemory(
                     h_process,
@@ -436,7 +447,9 @@ pub fn scan_dynamic_mem(pid: u32, jmp_len: usize, max_cap: usize) -> windows::co
                 .is_ok()
             };
 
-            if ok && read > 0 {}
+            if ok && read > 0 {
+                ret.push(ReadProcessMemoryResult { mbi, read, buf });
+            }
         }
 
         addr = next as *const _;
@@ -445,7 +458,7 @@ pub fn scan_dynamic_mem(pid: u32, jmp_len: usize, max_cap: usize) -> windows::co
     unsafe {
         CloseHandle(h_process).ok();
     }
-    Ok(())
+    Ok(ret)
 }
 
 /// # Panics
