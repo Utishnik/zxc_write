@@ -238,6 +238,7 @@ pub fn scan_process_strings(
     dwprocessid: u32,
 ) -> Result<Option<ExtractResult>, ScanProcessStringsError> {
     //PROCESS_QUERY_INFORMATION
+    println!("[DEBUG] PID SCAN:\t{dwprocessid}");
     let cfg_ascii: StringCfg = StringCfg::default();
     let cfg_unicode: StringCfg = StringCfg {
         min_len: 5,
@@ -294,6 +295,7 @@ pub fn scan_process_strings(
                     }
                 }
                 if vqe == 0 {
+                    //todo это не коректно всегда null будет
                     if !mbi.is_null() {
                         let dbg_dmr = describe_memory_region(&*mbi);
                         println!("[DEBUG] {}", dbg_dmr);
@@ -351,4 +353,133 @@ pub fn scan_process_strings(
         }
     }
     unreachable!();
+}
+
+/// # Panics
+/// если неверный конфиг
+#[doc = "не прирывается при нулевом VirtualQueryEx"]
+///# Errors
+/// 
+pub fn scan_process_strings_lossy(
+    dwprocessid: u32,
+) -> Result<Option<ExtractResult>, ScanProcessStringsError> {
+    let cfg_ascii = StringCfg::default();
+    let cfg_unicode = StringCfg {
+        min_len: 5,
+        max_len: Some(25),
+    };
+
+    println!("[DEBUG] PID SCAN:\t{dwprocessid}");
+
+    let h_process =
+        unsafe { open_read_process(dwprocessid).map_err(ScanProcessStringsError::OpenProcess)? };
+
+    let mut addr: *const c_void = std::ptr::null();
+    let mut all_ascii = Vec::new();
+    let mut all_unicode = Vec::new();
+
+    loop {
+        let mut mbi = MEMORY_BASIC_INFORMATION::default();
+
+        let result = unsafe {
+            VirtualQueryEx(
+                h_process,
+                Some(addr),
+                &mut mbi,
+                size_of::<MEMORY_BASIC_INFORMATION>(),
+            )
+        };
+
+        if result == 0 {
+            let err = unsafe { GetLastError() };
+            if err == ERROR_INVALID_ADDRESS {
+                println!("[DEBUG] Конец адресного пространства: {:p}", addr);
+            } else {
+                println!("[DEBUG] VirtualQueryEx ошибка: {:?}, addr: {:p}", err, addr);
+            }
+            break; // Выходим — больше нет регионов
+        }
+
+        let base_addr = mbi.BaseAddress;
+        let reg_size = mbi.RegionSize;
+        let protect = mbi.Protect;
+        let state = mbi.State;
+
+        // Пропускаем невалидные/нечитаемые регионы, но НЕ выходим — продолжаем!
+        if state != MEM_COMMIT || !is_readable(protect) {
+            let next = (base_addr as usize).saturating_add(reg_size);
+            if next == 0 || next <= addr as usize {
+                break;
+            }
+            addr = next as *const c_void;
+            continue;
+        }
+
+        // Защита от огромных регионов (например, 2 GB)
+        const MAX_REGION_SIZE: usize = 100 * 1024 * 1024;
+        let read_size = if reg_size > MAX_REGION_SIZE {
+            MAX_REGION_SIZE
+        } else {
+            reg_size
+        };
+
+        let mut buffer = vec![0_u8; read_size];
+        let mut bytes_read = 0_usize;
+
+        let read_ok = unsafe {
+            ReadProcessMemory(
+                h_process,
+                base_addr,
+                buffer.as_mut_ptr() as *mut c_void,
+                read_size,
+                Some(&mut bytes_read),
+            )
+            .is_ok()
+        };
+
+        if read_ok && bytes_read > 0 {
+            let ascii = unsafe {
+                extract_ascii_strings(
+                    buffer.as_ptr(),
+                    bytes_read,
+                    base_addr,
+                    cfg_ascii.min_len,
+                    cfg_ascii.max_len,
+                )
+            };
+            let unicode = unsafe {
+                extract_unicode_strings(
+                    buffer.as_ptr(),
+                    bytes_read,
+                    base_addr,
+                    cfg_unicode.min_len,
+                    cfg_unicode.max_len.unwrap_or(usize::MAX),
+                )
+            };
+
+            all_ascii.extend(ascii);
+            all_unicode.extend(unicode);
+        }
+        // Если ReadProcessMemory не сработал — просто пропускаем регион и идём дальше
+
+        // Переходим к следующему региону
+        let next = (base_addr as usize).saturating_add(reg_size);
+        if next == 0 || next <= addr as usize {
+            break; // Защита от переполнения
+        }
+        addr = next as *const c_void;
+    }
+
+    unsafe {
+        CloseHandle(h_process).ok();
+    }
+
+    if all_ascii.is_empty() && all_unicode.is_empty() {
+        Ok(None)
+    } else {
+        Ok(Some(ExtractResult {
+            ascii: all_ascii,
+            unicode: all_unicode,
+        }))
+    }
 }

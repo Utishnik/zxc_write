@@ -6,7 +6,7 @@ use windows::Win32::Security::{
 use windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 use windows::core::{HRESULT, PCWSTR, Result};
 
-//todo для множества привилегий
+//todo для множества привилегий / для не только текущего процесса
 pub fn enable_privilege_one(privilege_name: &str) -> Result<()> {
     let mut token = HANDLE::default();
     unsafe {

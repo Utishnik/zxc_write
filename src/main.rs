@@ -1,6 +1,7 @@
 use vec_string::*;
 use zxc_write::find_proccess::*;
 use zxc_write::mem::*;
+use zxc_write::privilege::enable_privilege_one;
 
 fn wait_close() {
     let mut buffer: String = String::new();
@@ -26,11 +27,30 @@ fn get_childs(pid: u32) {
     if let Err(e) = childs {
         println!("[ERROR] get_childs {:?}", e);
     } else if let Ok(ok) = childs {
+        let mut pids_vec: Vec<u32> = Vec::new();
         let names = ok
             .iter()
-            .map(|x| format!("name exe {}\tpid: {}", x.1.clone(), x.0))
+            .map(|x| {
+                pids_vec.push(x.0);
+                format!("name exe {}\tpid: {}", x.1.clone(), x.0)
+            })
             .collect::<Vec<String>>();
-        println!("{}", names.vec_string(DEFAULT_FORMAT_RULE))
+        println!("{}", names.vec_string(DEFAULT_FORMAT_RULE));
+        for &item in pids_vec.iter().rev() {
+            let find_res = find_strings(item);
+
+            if find_res.is_err() {
+                println!("find strings failed: None");
+                wait_close();
+                return;
+            }
+            let find_res = find_res.unwrap();
+            println!("Ascii:\t{}", find_res.ascii.vec_string(DEFAULT_FORMAT_RULE));
+            println!(
+                "Unicode:\t{}",
+                find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
+            );
+        }
     } else {
         unreachable!();
     }
@@ -38,6 +58,11 @@ fn get_childs(pid: u32) {
 
 fn main() {
     //find_strings();
+    let privilege_res = enable_privilege_one("SeDebugPrivilege");
+    if let Err(e) = privilege_res {
+        println!("Error: {:?}", e);
+        wait_close();
+    }
     let fnd_name = find_process_by_name("firefox.exe");
     if let Err(e) = fnd_name {
         println!("Error: {:?}", e);

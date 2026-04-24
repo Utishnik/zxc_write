@@ -45,6 +45,7 @@
 pub mod enum_modules;
 pub mod error_hand;
 pub mod find_proccess;
+pub mod level_integrity_control;
 pub mod mem;
 pub mod modules;
 pub mod privilege;
