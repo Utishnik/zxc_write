@@ -49,6 +49,13 @@ impl std::fmt::Display for ExtractStr {
     }
 }
 
+#[derive(Debug)]
+pub struct ReadProcessMemoryResult {
+    pub mbi: MEMORY_BASIC_INFORMATION,
+    pub read: usize,
+    pub buf: Vec<u8>,
+}
+
 ///# Safety
 ///
 pub unsafe fn extract_ascii_strings(
@@ -94,8 +101,18 @@ pub unsafe fn extract_ascii_strings(
 }
 
 #[inline(always)]
-fn check_unicode(c1: u8, c2: u8) -> bool {
+fn is_ascii_utf16le(c1: u8, c2: u8) -> bool {
     is_printable_char(c1) && is_null_term_ascii(c2)
+}
+
+use windows::Win32::System::Memory::{
+    PAGE_EXECUTE_READWRITE, PAGE_EXECUTE_WRITECOPY, PAGE_READWRITE, PAGE_WRITECOPY,
+};
+pub fn is_readwrite(protect: PAGE_PROTECTION_FLAGS) -> bool {
+    protect == PAGE_READWRITE
+        || protect == PAGE_EXECUTE_READWRITE
+        || protect == PAGE_WRITECOPY
+        || protect == PAGE_EXECUTE_WRITECOPY
 }
 
 #[inline(always)]
@@ -148,14 +165,14 @@ pub unsafe fn extract_unicode_strings(
         while i < size - 1 {
             let as_char1 = *buf.add(i);
             let as_char2 = *buf.add(i + 1);
-            if check_unicode(as_char1, as_char2) {
+            if is_ascii_utf16le(as_char1, as_char2) {
                 let mut wstr: String = String::default();
                 let mut last_val_j: usize = 0;
                 let get: Vec<(u8, u8)> = get_u8_to_buf(buf, size - 1, i, 2);
 
                 for j in get
                     .iter()
-                    .filter(|&x| -> bool { check_unicode(x.0, x.1) })
+                    .filter(|&x| -> bool { is_ascii_utf16le(x.0, x.1) })
                     .enumerate()
                 {
                     let empty_c = ' ';
@@ -172,7 +189,9 @@ pub unsafe fn extract_unicode_strings(
                     }
                     last_val_j = j.0 + i;
                 }
-                if wstr.len() < 100 {
+
+                let l = wstr.len();
+                if l < 100 && l > 7 {
                     println!("{wstr}");
                 }
                 if wstr.len() >= min_len && wstr.len() <= max_len {
@@ -368,6 +387,67 @@ pub fn scan_process_strings(
     unreachable!();
 }
 
+pub fn scan_dynamic_mem(pid: u32, jmp_len: usize, max_cap: usize) -> windows::core::Result<()> {
+    let h_process =
+        unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid)? };
+
+    let mut addr: *const std::ffi::c_void = std::ptr::null();
+
+    loop {
+        let mut mbi = MEMORY_BASIC_INFORMATION::default();
+        let result = unsafe {
+            VirtualQueryEx(
+                h_process,
+                Some(addr),
+                &mut mbi,
+                std::mem::size_of::<MEMORY_BASIC_INFORMATION>(),
+            )
+        };
+
+        if result == 0 {
+            let err = unsafe { windows::Win32::Foundation::GetLastError() };
+            if err == ERROR_INVALID_ADDRESS {
+                break;
+            }
+            // Пропускаем ошибку, двигаемся вперёд
+            addr = ((addr as usize) + jmp_len) as *const _;
+            continue;
+        }
+
+        let next = (mbi.BaseAddress as usize) + mbi.RegionSize;
+
+        // ФИЛЬТР: только динамическая память (куча/стек), не модули, не маппинги
+        let is_dynamic =
+            mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE && is_readwrite(mbi.Protect);
+
+        if is_dynamic {
+            let size = mbi.RegionSize.min(max_cap);
+            let mut buf = vec![0_u8; size];
+            let mut read = 0_usize;
+
+            let ok = unsafe {
+                ReadProcessMemory(
+                    h_process,
+                    mbi.BaseAddress,
+                    buf.as_mut_ptr() as *mut _,
+                    size,
+                    Some(&mut read),
+                )
+                .is_ok()
+            };
+
+            if ok && read > 0 {}
+        }
+
+        addr = next as *const _;
+    }
+
+    unsafe {
+        CloseHandle(h_process).ok();
+    }
+    Ok(())
+}
+
 /// # Panics
 /// если неверный конфиг
 #[doc = "не прирывается при нулевом VirtualQueryEx и не закоммиченной/не is_readable"]
@@ -441,7 +521,6 @@ pub fn scan_process_strings_lossy(
 
         let mut buffer = vec![0_u8; read_size];
         let mut bytes_read = 0_usize;
-
         let read_ok = unsafe {
             ReadProcessMemory(
                 h_process,

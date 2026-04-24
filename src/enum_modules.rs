@@ -1,3 +1,4 @@
+use crate::utils::HandleGuard;
 use std::mem;
 use windows::Win32::Foundation::{CloseHandle, HANDLE, HMODULE, MAX_PATH};
 use windows::Win32::System::ProcessStatus::{
@@ -90,19 +91,4 @@ pub fn list_modules_ex(
     }
 
     Ok(Some(ret_vec))
-}
-
-struct HandleGuard(HANDLE);
-impl Drop for HandleGuard {
-    fn drop(&mut self) {
-        if !self.0.is_invalid() {
-            unsafe {
-                let close_res = CloseHandle(self.0);
-                if close_res.is_err() {
-                    println!("[LOG] HandleGuard Drop CloseHandle Err");
-                    //todo использовать какие нибудь tiny log и тд
-                }
-            }
-        }
-    }
 }

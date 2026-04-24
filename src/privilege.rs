@@ -1,3 +1,4 @@
+use crate::utils::HandleGuard;
 use windows::Win32::Foundation::{CloseHandle, ERROR_NOT_ALL_ASSIGNED, HANDLE, LUID};
 use windows::Win32::Security::{
     AdjustTokenPrivileges, LUID_AND_ATTRIBUTES, LookupPrivilegeValueW, SE_PRIVILEGE_ENABLED,
@@ -45,19 +46,4 @@ pub fn enable_privilege_one(privilege_name: &str) -> Result<()> {
     }
 
     Ok(())
-}
-
-struct HandleGuard(HANDLE);
-impl Drop for HandleGuard {
-    fn drop(&mut self) {
-        if !self.0.is_invalid() {
-            unsafe {
-                let close_res = CloseHandle(self.0);
-                if close_res.is_err() {
-                    println!("[LOG] HandleGuard Drop CloseHandle Err");
-                    //todo использовать какие нибудь tiny log и тд
-                }
-            }
-        }
-    }
 }
