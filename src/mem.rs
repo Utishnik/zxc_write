@@ -14,6 +14,7 @@ use windows::{
     core::Error,
 };
 
+#[inline(always)]
 pub fn is_readable(protect: PAGE_PROTECTION_FLAGS) -> bool {
     let f = protect
         & (PAGE_READONLY
@@ -25,16 +26,39 @@ pub fn is_readable(protect: PAGE_PROTECTION_FLAGS) -> bool {
     f.0 != 0
 }
 
+#[inline(always)]
 pub fn is_printable_char(c: u8) -> bool {
     (0x20..0x7E).contains(&c)
 }
 
+#[inline(always)]
 pub const fn is_null_term_ascii(c: u8) -> bool {
     c == 0x00
 }
 
+#[inline(always)]
 pub const fn is_null_term_unicode(c: char) -> bool {
     c == '\0'
+}
+
+#[inline(always)]
+fn is_ascii_utf16le(c1: u8, c2: u8) -> bool {
+    is_printable_char(c1) && is_null_term_ascii(c2)
+}
+
+#[inline(always)]
+pub fn is_printable_utf16le(c1: u8, c2: u8) -> bool {
+    matches!(u16::from_le_bytes([c1, c2]),
+        0x0020..=0x007E |      // Basic Latin
+        0x00A1..=0x024F |      // Latin Extended
+        0x0400..=0x04FF |      // Cyrillic
+        0x2000..=0x206F |      // General Punctuation
+        0x3000..=0x303F        // CJK Punctuation
+    )
+}
+
+pub const fn is_null_utf16le(c1: u8, c2: u8) -> bool {
+    c1 == 0x00 && c2 == 0x00
 }
 
 #[derive(Debug, Default)]
@@ -100,11 +124,6 @@ pub unsafe fn extract_ascii_strings(
     extract_res
 }
 
-#[inline(always)]
-fn is_ascii_utf16le(c1: u8, c2: u8) -> bool {
-    is_printable_char(c1) && is_null_term_ascii(c2)
-}
-
 use windows::Win32::System::Memory::{
     PAGE_EXECUTE_READWRITE, PAGE_EXECUTE_WRITECOPY, PAGE_READWRITE, PAGE_WRITECOPY,
 };
@@ -155,65 +174,76 @@ pub unsafe fn get_u8_to_buf(
 pub unsafe fn extract_unicode_strings(
     buf: *const u8,
     size: usize,
-    base_ptr: *mut core::ffi::c_void,
+    base_ptr: *mut c_void,
     min_len: usize,
-    max_len: usize,
+    max_len: Option<usize>,
 ) -> Vec<ExtractStr> {
-    let mut extract_res: Vec<ExtractStr> = Vec::with_capacity(size / min_len);
-    let mut i = 0;
-    unsafe {
-        while i < size - 1 {
-            let as_char1 = *buf.add(i);
-            let as_char2 = *buf.add(i + 1);
-            if is_ascii_utf16le(as_char1, as_char2) {
-                let mut wstr: String = String::default();
-                let mut last_val_j: usize = 0;
-                let get: Vec<(u8, u8)> = get_u8_to_buf(buf, size - 1, i, 2);
+    let mut extract_res: Vec<ExtractStr> = Vec::with_capacity(size / 2 / min_len);
+    let mut cur: String = String::default();
+    let mut start_offset: usize = 0;
+    let max_len_some: bool = max_len.is_some();
 
-                for j in get
-                    .iter()
-                    .filter(|&x| -> bool { is_ascii_utf16le(x.0, x.1) })
-                    .enumerate()
-                {
-                    let empty_c = ' ';
-                    let tern_nil = '\0';
-                    let (high, low) = *j.1;
-                    let as_char = ascii_to_char(high, low);
-                    if let Some(c) = as_char {
-                        if c == tern_nil {
-                            break;
-                        }
-                        wstr.push(c);
-                    } else {
-                        wstr.push(empty_c);
-                    }
-                    last_val_j = j.0 + i;
-                }
+    let mut i: usize = 0;
+    while i + 1 < size {
+        let c1 = unsafe { *buf.add(i) };
+        let c2 = unsafe { *buf.add(i + 1) };
 
-                let l = wstr.len();
-                if l < 100 && l > 7 {
-                    println!("{wstr}");
-                }
-                if wstr.len() >= min_len && wstr.len() <= max_len {
+        if is_null_utf16le(c1, c2) {
+            // Null terminator — конец строки
+            if cur.len() >= min_len {
+                let fits_max = if max_len_some {
+                    cur.len() <= max_len.unwrap()
+                } else {
+                    true
+                };
+                if fits_max {
                     extract_res.push(ExtractStr {
-                        base_addr: base_ptr.add(i),
-                        str: wstr,
+                        base_addr: (base_ptr as usize + start_offset) as *mut c_void,
+                        str: cur.clone(),
                     });
                 }
-                if last_val_j < 2 {
-                    continue;
-                }
-                let add = i.checked_add(last_val_j - 2);
-                if add.is_none() {
-                    continue;
-                }
-                let add = add.unwrap_unchecked();
-
-                i += add;
             }
-            i += 2;
+            cur.clear();
+        } else if is_printable_utf16le(c1, c2) {
+            // Валидный printable символ UTF-16LE
+            if cur.is_empty() {
+                start_offset = i;
+            }
+            let code_unit = u16::from_le_bytes([c1, c2]);
+            if let Some(ch) = char::from_u32(code_unit as u32) {
+                cur.push(ch);
+            }
+            // Принудительный пуш если достигли max_len
+            if max_len_some && cur.len() >= max_len.unwrap() {
+                extract_res.push(ExtractStr {
+                    base_addr: (base_ptr as usize + start_offset) as *mut c_void,
+                    str: cur.clone(),
+                });
+                cur.clear();
+            }
+        } else {
+            // Мусор — сбрасываем
+            cur.clear();
+        }
+
+        i += 2;
+    }
+
+    // Хвост (если данные закончились без null-terminator)
+    if cur.len() >= min_len {
+        let fits_max = if max_len_some {
+            cur.len() <= max_len.unwrap()
+        } else {
+            true
+        };
+        if fits_max {
+            extract_res.push(ExtractStr {
+                base_addr: (base_ptr as usize + start_offset) as *mut c_void,
+                str: cur,
+            });
         }
     }
+
     extract_res
 }
 
@@ -286,12 +316,12 @@ fn test() {
 #[must_use]
 pub fn scan_process_processors<F, T>(
     dwprocessid: u32,
-    processors: &[F],
+    processors: &mut [F],
     start_cap: usize,
     stard_addr: Option<*const c_void>,
 ) -> Result<ExtractResult<T>, ScanProcessStringsError>
 where
-    F: Fn(*mut c_void, usize, *const c_void) -> Vec<T>,
+    F: FnMut(*mut c_void, usize, *const c_void) -> Vec<T>,
 {
     //PROCESS_QUERY_INFORMATION
     println!("[DEBUG] PID SCAN:\t{dwprocessid}");
@@ -325,7 +355,7 @@ where
                                         .map(|_| Vec::with_capacity(start_cap))
                                         .collect();
 
-                                    processors.iter().for_each(|item| {
+                                    processors.iter_mut().for_each(|item| {
                                         ret.push(item(ptr_buf, *x, base_addr));
                                     });
 
@@ -416,12 +446,12 @@ pub struct MemoryRegion {
 #[must_use]
 pub fn scan_process_processors_mbi<F, T>(
     dwprocessid: u32,
-    processors: &[F],
+    processors: &mut [F],
     start_cap: usize,
     rpmr: Vec<ReadProcessMemoryResult>, //ахуеное название
 ) -> Result<ExtractResult<T>, ScanProcessStringsError>
 where
-    F: Fn(*const c_void, usize, *const c_void) -> Vec<T>,
+    F: FnMut(*const c_void, usize, *const c_void) -> Vec<T>,
 {
     //PROCESS_QUERY_INFORMATION
     println!("[DEBUG] PID SCAN:\t{dwprocessid}");
@@ -436,7 +466,7 @@ where
                 let mut ret: Vec<Vec<T>> = (0..processors.len())
                     .map(|_| Vec::with_capacity(start_cap))
                     .collect();
-                processors.iter().for_each(|item| {
+                processors.iter_mut().for_each(|item| {
                     ret.push(item(buf.as_ptr() as _, read, base_addr));
                 });
                 accumulator.push(Some(ret)); //всегда some так как scan_dynamic_mem фильтрует
@@ -618,7 +648,7 @@ pub fn scan_process_strings_lossy(
                     bytes_read,
                     base_addr,
                     cfg_unicode.min_len,
-                    cfg_unicode.max_len.unwrap_or(usize::MAX),
+                    cfg_unicode.max_len,
                 )
             };
 
