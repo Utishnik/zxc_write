@@ -85,7 +85,7 @@ pub struct ReadProcessMemoryResult {
 pub unsafe fn extract_ascii_strings(
     buf: *const u8,
     size: usize,
-    base_ptr: *mut core::ffi::c_void,
+    base_ptr: *const core::ffi::c_void,
     min_len: usize,
     max_len: Option<usize>,
 ) -> Vec<ExtractStr> {
@@ -105,7 +105,7 @@ pub unsafe fn extract_ascii_strings(
                     || cur.len() >= min_len && (max_len_some && is_null_term_ascii(cur_char as u8))
                 {
                     extract_res.push(ExtractStr {
-                        base_addr: base_ptr.add(i - cur.len()),
+                        base_addr: base_ptr.add(i - cur.len()) as _,
                         str: cur.clone(),
                     });
                 }
@@ -116,7 +116,7 @@ pub unsafe fn extract_ascii_strings(
     unsafe {
         if cur.len() >= min_len {
             extract_res.push(ExtractStr {
-                base_addr: base_ptr.add(size - cur.len()),
+                base_addr: base_ptr.add(size - cur.len()) as _,
                 str: cur.clone(),
             });
         }
@@ -174,7 +174,7 @@ pub unsafe fn get_u8_to_buf(
 pub unsafe fn extract_unicode_strings(
     buf: *const u8,
     size: usize,
-    base_ptr: *mut c_void,
+    base_ptr: *const c_void,
     min_len: usize,
     max_len: Option<usize>,
 ) -> Vec<ExtractStr> {
@@ -316,13 +316,10 @@ fn test() {
 #[must_use]
 pub fn scan_process_processors<F, T>(
     dwprocessid: u32,
-    processors: &mut [F],
+    processors: &[fn(*mut c_void, usize, *const c_void) -> Vec<T>],
     start_cap: usize,
     stard_addr: Option<*const c_void>,
-) -> Result<ExtractResult<T>, ScanProcessStringsError>
-where
-    F: FnMut(*mut c_void, usize, *const c_void) -> Vec<T>,
-{
+) -> Result<ExtractResult<T>, ScanProcessStringsError> {
     //PROCESS_QUERY_INFORMATION
     println!("[DEBUG] PID SCAN:\t{dwprocessid}");
     let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
@@ -355,7 +352,7 @@ where
                                         .map(|_| Vec::with_capacity(start_cap))
                                         .collect();
 
-                                    processors.iter_mut().for_each(|item| {
+                                    processors.iter().for_each(|item| {
                                         ret.push(item(ptr_buf, *x, base_addr));
                                     });
 
@@ -549,31 +546,25 @@ pub fn scan_dynamic_mem<F: Fn(MEMORY_BASIC_INFORMATION) -> bool>(
     Ok(ret)
 }
 
-/// # Panics
-/// если неверный конфиг
-#[doc = "не прирывается при нулевом VirtualQueryEx и не закоммиченной/не is_readable"]
-///# Errors
-///
-pub fn scan_process_strings_lossy(
+/// Универсальный обход памяти процесса с извлечением данных.
+/// Принимает срез замыканий, каждое из которых вызывается для каждого читабельного региона.
+/// Возвращает `Vec<Option<Vec<Vec<T>>>>` — по одному `Option` на регион,
+/// внутри `Some` лежит результат каждого обработчика (`Vec<T>` на обработчик).
+pub fn scan_process_strings_lossy<T>(
     dwprocessid: u32,
-    vqe_ignore: bool,
-) -> Result<Option<ExtractStrResult>, ScanProcessStringsError> {
-    let cfg_ascii = StringCfg::default();
-    let cfg_unicode = StringCfg {
-        min_len: 5,
-        max_len: Some(25),
-    };
-
+    processors: &[fn(*mut c_void, usize, *const c_void) -> Vec<T>],
+    start_cap: usize,
+    start_addr: Option<*const c_void>,
+) -> Result<ExtractResult<T>, ScanProcessStringsError> {
     println!("[DEBUG] PID SCAN:\t{dwprocessid}");
 
     let h_process = open_read_process(dwprocessid).map_err(ScanProcessStringsError::OpenProcess)?;
 
-    let mut addr: *const c_void = std::ptr::null();
-    let mut all_ascii = Vec::new();
-    let mut all_unicode = Vec::new();
+    let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
+    let mut addr = start_addr.unwrap_or(ptr::null());
 
     loop {
-        let mut mbi = MEMORY_BASIC_INFORMATION::default();
+        let mut mbi: MEMORY_BASIC_INFORMATION = unsafe { std::mem::zeroed() };
 
         let result = unsafe {
             VirtualQueryEx(
@@ -584,17 +575,14 @@ pub fn scan_process_strings_lossy(
             )
         };
 
-        if result == 0 && !vqe_ignore {
+        if result == 0 {
             let err = unsafe { GetLastError() };
             if err == ERROR_INVALID_ADDRESS {
                 println!("[DEBUG] Конец адресного пространства: {:p}", addr);
             } else {
-                println!("[DEBUG] VirtualQueryEx ошибка: {:?}, addr: {:p}", err, addr);
+                eprintln!("[DEBUG] VirtualQueryEx ошибка: {:?}, addr: {:p}", err, addr);
             }
-            break; // Выходим
-        } else if result == 0 {
-            let err = unsafe { GetLastError() };
-            println!("[LOG] scan_process_strings_lossy: {:?}", err);
+            break;
         }
 
         let base_addr = mbi.BaseAddress;
@@ -603,15 +591,11 @@ pub fn scan_process_strings_lossy(
         let state = mbi.State;
 
         if state != MEM_COMMIT || !is_readable(protect) {
-            let next = unsafe { base_addr.add(reg_size) };
-            if next.is_null() || next <= addr as _ {
-                break;
-            }
-            addr = next as *const c_void;
+            addr = unsafe { base_addr.add(reg_size) };
             continue;
         }
 
-        // Защита от огромных регионов
+        // Защита от слишком больших регионов
         const MAX_REGION_SIZE: usize = 100 * 1024 * 1024;
         let read_size = if reg_size > MAX_REGION_SIZE {
             MAX_REGION_SIZE
@@ -619,8 +603,9 @@ pub fn scan_process_strings_lossy(
             reg_size
         };
 
-        let mut buffer = vec![0_u8; read_size];
-        let mut bytes_read = 0_usize;
+        let mut buffer: Vec<u8> = vec![0u8; read_size];
+        let mut bytes_read: usize = 0;
+
         let read_ok = unsafe {
             ReadProcessMemory(
                 h_process,
@@ -633,48 +618,23 @@ pub fn scan_process_strings_lossy(
         };
 
         if read_ok && bytes_read > 0 {
-            let ascii = unsafe {
-                extract_ascii_strings(
-                    buffer.as_ptr(),
-                    bytes_read,
-                    base_addr,
-                    cfg_ascii.min_len,
-                    cfg_ascii.max_len,
-                )
-            };
-            let unicode = unsafe {
-                extract_unicode_strings(
-                    buffer.as_ptr(),
-                    bytes_read,
-                    base_addr,
-                    cfg_unicode.min_len,
-                    cfg_unicode.max_len,
-                )
-            };
-
-            all_ascii.extend(ascii);
-            all_unicode.extend(unicode);
+            let region_results: Vec<Vec<T>> = processors
+                .iter()
+                .map(|proc| proc(buffer.as_mut_ptr() as *mut c_void, bytes_read, base_addr))
+                .collect();
+            accumulator.push(Some(region_results));
+        } else {
+            // Если не прочитали, всё равно сохраняем None для этого региона?
+            // В исходной логике просто пропускали, здесь кладём None, чтобы сохранить число регионов.
+            accumulator.push(None);
         }
-        // Если ReadProcessMemory не сработал — просто пропускаем регион и идём дальше
 
-        // Переходим к следующему региону
-        let next = unsafe { base_addr.add(reg_size) };
-        if next.is_null() || next <= addr as _ {
-            break;
-        }
-        addr = next as *const c_void;
+        addr = unsafe { base_addr.add(reg_size) };
     }
 
     unsafe {
         CloseHandle(h_process).ok();
     }
 
-    if all_ascii.is_empty() && all_unicode.is_empty() {
-        Ok(None)
-    } else {
-        Ok(Some(ExtractStrResult {
-            ascii: all_ascii,
-            unicode: all_unicode,
-        }))
-    }
+    Ok(accumulator)
 }

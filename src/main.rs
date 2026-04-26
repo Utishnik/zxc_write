@@ -1,3 +1,4 @@
+use core::ffi::c_void;
 use vec_string::*;
 use zxc_write::find_proccess::*;
 use zxc_write::mem::*;
@@ -6,6 +7,53 @@ use zxc_write::privilege::enable_privilege_one;
 fn wait_close() {
     let mut buffer: String = String::new();
     let _ = std::io::stdin().read_line(&mut buffer);
+}
+
+fn extract_str(dwprocessid: u32) {
+    let cfg_ascii = StringCfg::default(); // min_len = 4, max_len = None
+    let cfg_unicode = StringCfg {
+        min_len: 5,
+        max_len: Some(25),
+    };
+
+    let mut ascii_processor = |buf_ptr: *mut c_void, size: usize, base: *const c_void| unsafe {
+        extract_ascii_strings(
+            buf_ptr as *const u8,
+            size,
+            base,
+            cfg_ascii.min_len,
+            cfg_ascii.max_len,
+        )
+    };
+    let mut unicode_processor = |buf_ptr: *mut c_void, size: usize, base: *const c_void| unsafe {
+        extract_unicode_strings(
+            buf_ptr as *const u8,
+            size,
+            base,
+            cfg_unicode.min_len,
+            cfg_unicode.max_len,
+        )
+    };
+
+    let mut processors = [ascii_processor, unicode_processor];
+
+    let result: Result<ExtractResult<ExtractStr>, _> = scan_process_strings_lossy(
+        dwprocessid,
+        &mut processors,
+        16,   // start_cap
+        None, // начать с NULL
+    );
+
+    // Извлечь плоский список всех строк (объединяя ascii+unicode из всех регионов)
+    if let Ok(extract_result) = result {
+        let all_ascii: Vec<_> = extract_result
+            .into_iter()
+            .filter_map(|opt| opt)
+            .flat_map(|per_proc| per_proc.into_iter().nth(0)) // ascii — первый обработчик
+            .flatten()
+            .collect();
+        let all_unicode: Vec<_>;
+    }
 }
 
 fn find_strings(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
