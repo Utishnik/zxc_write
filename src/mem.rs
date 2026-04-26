@@ -266,9 +266,15 @@ pub unsafe fn open_read_process(dwprocessid: u32) -> Result<HANDLE, Error> {
 /// # Panics
 /// если неверный конфиг
 #[must_use]
-pub fn scan_process_strings(
+pub fn scan_process_strings<F, T>(
     dwprocessid: u32,
-) -> Result<Option<ExtractResult>, ScanProcessStringsError> {
+    processors: &[F],
+    start_cap: usize,
+    stard_addr: Option<*const c_void>,
+) -> Result<Option<ExtractResult>, ScanProcessStringsError> 
+where
+    F: Fn(*const u8, usize, *const c_void) -> Vec<T>,
+{
     //PROCESS_QUERY_INFORMATION
     println!("[DEBUG] PID SCAN:\t{dwprocessid}");
     let cfg_ascii: StringCfg = StringCfg::default();
@@ -276,12 +282,15 @@ pub fn scan_process_strings(
         min_len: 5,
         max_len: Some(25),
     };
+    let mut accumulator: Vec<Vec<T>> = (0..processors.len())
+           .map(|_| Vec::with_capacity(start_cap))
+           .collect();
     unsafe {
         let h_process = open_read_process(dwprocessid);
         match h_process {
             Ok(ok) => {
                 let mbi: *mut MEMORY_BASIC_INFORMATION = ptr::null_mut();
-                let addr: Option<*const c_void> = None;
+                let addr: Option<*const c_void> = stard_addr;
                 let mut vqe = VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
                 use crate::error_hand::check_mbi::*;
                 while vqe != 0 {
@@ -387,6 +396,8 @@ pub fn scan_process_strings(
     unreachable!();
 }
 
+
+use crate::utils::HandleGuard;
 pub fn scan_dynamic_mem<F: Fn(MEMORY_BASIC_INFORMATION) -> bool>(
     pid: u32,
     jmp_len: usize,
@@ -396,7 +407,7 @@ pub fn scan_dynamic_mem<F: Fn(MEMORY_BASIC_INFORMATION) -> bool>(
     let mut ret: Vec<ReadProcessMemoryResult> = Vec::new();
     let h_process =
         unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid)? };
-
+    let _guard = HandleGuard(h_process);
     let mut addr: *const std::ffi::c_void = std::ptr::null();
 
     loop {
@@ -455,9 +466,6 @@ pub fn scan_dynamic_mem<F: Fn(MEMORY_BASIC_INFORMATION) -> bool>(
         addr = next as *const _;
     }
 
-    unsafe {
-        CloseHandle(h_process).ok();
-    }
     Ok(ret)
 }
 
