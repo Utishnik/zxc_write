@@ -270,10 +270,17 @@ fn test() {
     let p = vec![vec![1_u8]];
     test.push(Some(p));
 
-    let _: &u8 = test.last().unwrap().clone().unwrap().first().unwrap().first().unwrap();
+    let _: &u8 = test
+        .last()
+        .unwrap()
+        .clone()
+        .unwrap()
+        .first()
+        .unwrap()
+        .first()
+        .unwrap();
 }
 
-// TODO ! МЕНЬШЕ UNSAFE
 /// # Panics
 /// если неверный конфиг
 #[must_use]
@@ -290,25 +297,27 @@ where
     println!("[DEBUG] PID SCAN:\t{dwprocessid}");
     let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
 
-    unsafe {
-        let h_process = open_read_process(dwprocessid);
-        match h_process {
-            Ok(ok) => {
-                let mbi: *mut MEMORY_BASIC_INFORMATION = ptr::null_mut();
-                let addr: Option<*const c_void> = stard_addr;
-                let mut vqe = VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
-                use crate::error_hand::check_mbi::*;
-                while vqe != 0 {
-                    vqe = VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
-                    let get_protect = (*mbi).Protect;
-                    let get_state = (*mbi).State;
-                    let reg_size = (*mbi).RegionSize;
-                    if get_state == MEM_COMMIT && is_readable(get_protect) {
-                        let base_addr: *mut c_void = (*mbi).BaseAddress;
-                        let mut buffer: Vec<u8> = Vec::with_capacity(reg_size);
-                        let ptr_buf: *mut c_void = buffer.as_mut_ptr() as *mut c_void;
-                        let reg_size: usize = (*mbi).RegionSize;
-                        let byte_read: Option<*mut usize> = Some(ptr::null_mut());
+    let h_process = open_read_process(dwprocessid);
+    match h_process {
+        Ok(ok) => {
+            let mbi: *mut MEMORY_BASIC_INFORMATION = ptr::null_mut();
+            let addr: Option<*const c_void> = stard_addr;
+            let mut vqe =
+                unsafe { VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>()) };
+            use crate::error_hand::check_mbi::*;
+            while vqe != 0 {
+                vqe =
+                    unsafe { VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>()) };
+                let get_protect = unsafe { (*mbi).Protect };
+                let get_state = unsafe { (*mbi).State };
+                let reg_size = unsafe { (*mbi).RegionSize };
+                if get_state == MEM_COMMIT && is_readable(get_protect) {
+                    let base_addr: *mut c_void = unsafe { (*mbi).BaseAddress };
+                    let mut buffer: Vec<u8> = Vec::with_capacity(reg_size);
+                    let ptr_buf: *mut c_void = buffer.as_mut_ptr() as *mut c_void;
+                    let reg_size: usize = unsafe { (*mbi).RegionSize };
+                    let byte_read: Option<*mut usize> = Some(ptr::null_mut());
+                    unsafe {
                         if ReadProcessMemory(ok, base_addr, ptr_buf, reg_size, byte_read).is_ok() {
                             let res = byte_read.map_or_else(
                                 || None,
@@ -330,66 +339,70 @@ where
                         }
                     }
                 }
-                if vqe == 0 {
-                    //todo это не коректно всегда null будет
-                    if !mbi.is_null() {
-                        let dbg_dmr = describe_memory_region(&*mbi);
-                        println!("[DEBUG] {}", dbg_dmr);
-                    } else {
-                        let err = get_last_error_as_string_array();
-                        println!("last err: {}", err);
-                        println!("mbi is null ptr");
-                    }
+            }
+            if vqe == 0 {
+                //todo это не коректно всегда null будет
+                if !mbi.is_null() {
+                    let dbg_dmr = describe_memory_region(unsafe { &*mbi });
+                    println!("[DEBUG] {}", dbg_dmr);
+                } else {
+                    let err = unsafe { get_last_error_as_string_array() };
+                    println!("last err: {}", err);
+                    println!("mbi is null ptr");
+                }
 
-                    let mut err_ret = std::mem::MaybeUninit::<VirtualQueryExErr>::uninit();
-                    use std::ptr::addr_of_mut;
-                    let old_ptr_mut = addr_of_mut!((*err_ret.as_mut_ptr()).old);
-                    let new_ptr_mut = addr_of_mut!((*err_ret.as_mut_ptr()).new);
+                let mut err_ret = std::mem::MaybeUninit::<VirtualQueryExErr>::uninit();
+                use std::ptr::addr_of_mut;
+                let old_ptr_mut = unsafe { addr_of_mut!((*err_ret.as_mut_ptr()).old) };
+                let new_ptr_mut = unsafe { addr_of_mut!((*err_ret.as_mut_ptr()).new) };
 
-                    //check старый hand
-                    {
-                        let h_process = h_process.unwrap(); //безопасно потому что у нас выше и если не там ошибка то ScanProcessStringsError::VirtualQueryEx
-                        let _: usize =
-                            VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
-                        if let Some(x) = addr {
+                //check старый hand
+                {
+                    let h_process = h_process.unwrap(); //безопасно потому что у нас выше и если не там ошибка то ScanProcessStringsError::VirtualQueryEx
+                    let _: usize = unsafe {
+                        VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>())
+                    };
+                    if let Some(x) = addr {
+                        unsafe {
                             *old_ptr_mut = virtual_query_with_diagnostics(h_process, x);
-                        } else {
-                            println!("[DEBUG] None ptr старый hand");
-                            return Err(ScanProcessStringsError::VirtualQueryExNonePtr);
                         }
+                    } else {
+                        println!("[DEBUG] None ptr старый hand");
+                        return Err(ScanProcessStringsError::VirtualQueryExNonePtr);
                     }
-                    //check new open process
-                    {
-                        let err_hand = open_read_process(dwprocessid);
-                        if let Err(e) = err_hand {
-                            println!("[DEBUG] find_strings err_hand Err: {:?}", e);
-                        } else if let Ok(ok) = err_hand {
-                            let err_hand = ok;
+                }
+                //check new open process
+                {
+                    let err_hand = open_read_process(dwprocessid);
+                    if let Err(e) = err_hand {
+                        println!("[DEBUG] find_strings err_hand Err: {:?}", e);
+                    } else if let Ok(ok) = err_hand {
+                        let err_hand = ok;
+                        unsafe {
                             let _: usize = VirtualQueryEx(
                                 ok,
                                 addr,
                                 mbi,
                                 size_of::<MEMORY_BASIC_INFORMATION>(),
                             );
-                            if let Some(x) = addr {
+                        }
+                        if let Some(x) = addr {
+                            unsafe {
                                 *new_ptr_mut = virtual_query_with_diagnostics(err_hand, x);
-                            } else {
-                                println!("[DEBUG] None ptr new hand\n");
-                                return Err(ScanProcessStringsError::VirtualQueryExNonePtr);
                             }
+                        } else {
+                            println!("[DEBUG] None ptr new hand\n");
+                            return Err(ScanProcessStringsError::VirtualQueryExNonePtr);
                         }
                     }
-                    let initialized = err_ret.assume_init();
-                    Err(ScanProcessStringsError::VirtualQueryEx(initialized))
                 }
-                else{
-                    Ok(accumulator)
-                }
-            }
-            Err(e) => {
-                Err(ScanProcessStringsError::OpenProcess(e))
+                let initialized = unsafe { err_ret.assume_init() };
+                Err(ScanProcessStringsError::VirtualQueryEx(initialized))
+            } else {
+                Ok(accumulator)
             }
         }
+        Err(e) => Err(ScanProcessStringsError::OpenProcess(e)),
     }
 }
 
@@ -407,25 +420,27 @@ where
     println!("[DEBUG] PID SCAN:\t{dwprocessid}");
     let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
 
-    unsafe {
-        let h_process = open_read_process(dwprocessid);
-        match h_process {
-            Ok(ok) => {
-                let mbi: *mut MEMORY_BASIC_INFORMATION = ptr::null_mut();
-                let addr: Option<*const c_void> = stard_addr;
-                let mut vqe = VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
-                use crate::error_hand::check_mbi::*;
-                while vqe != 0 {
-                    vqe = VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
-                    let get_protect = (*mbi).Protect;
-                    let get_state = (*mbi).State;
-                    let reg_size = (*mbi).RegionSize;
-                    if get_state == MEM_COMMIT && is_readable(get_protect) {
-                        let base_addr: *mut c_void = (*mbi).BaseAddress;
-                        let mut buffer: Vec<u8> = Vec::with_capacity(reg_size);
-                        let ptr_buf: *mut c_void = buffer.as_mut_ptr() as *mut c_void;
-                        let reg_size: usize = (*mbi).RegionSize;
-                        let byte_read: Option<*mut usize> = Some(ptr::null_mut());
+    let h_process = open_read_process(dwprocessid);
+    match h_process {
+        Ok(ok) => {
+            let mbi: *mut MEMORY_BASIC_INFORMATION = ptr::null_mut();
+            let addr: Option<*const c_void> = stard_addr;
+            let mut vqe =
+                unsafe { VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>()) };
+            use crate::error_hand::check_mbi::*;
+            while vqe != 0 {
+                vqe =
+                    unsafe { VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>()) };
+                let get_protect = unsafe { (*mbi).Protect };
+                let get_state = unsafe { (*mbi).State };
+                let reg_size = unsafe { (*mbi).RegionSize };
+                if get_state == MEM_COMMIT && is_readable(get_protect) {
+                    let base_addr: *mut c_void = unsafe { (*mbi).BaseAddress };
+                    let mut buffer: Vec<u8> = Vec::with_capacity(reg_size);
+                    let ptr_buf: *mut c_void = buffer.as_mut_ptr() as *mut c_void;
+                    let reg_size: usize = unsafe { (*mbi).RegionSize };
+                    let byte_read: Option<*mut usize> = Some(ptr::null_mut());
+                    unsafe {
                         if ReadProcessMemory(ok, base_addr, ptr_buf, reg_size, byte_read).is_ok() {
                             let res = byte_read.map_or_else(
                                 || None,
@@ -447,66 +462,70 @@ where
                         }
                     }
                 }
-                if vqe == 0 {
-                    //todo это не коректно всегда null будет
-                    if !mbi.is_null() {
-                        let dbg_dmr = describe_memory_region(&*mbi);
-                        println!("[DEBUG] {}", dbg_dmr);
-                    } else {
-                        let err = get_last_error_as_string_array();
-                        println!("last err: {}", err);
-                        println!("mbi is null ptr");
-                    }
+            }
+            if vqe == 0 {
+                //todo это не коректно всегда null будет
+                if !mbi.is_null() {
+                    let dbg_dmr = describe_memory_region(unsafe { &*mbi });
+                    println!("[DEBUG] {}", dbg_dmr);
+                } else {
+                    let err = unsafe { get_last_error_as_string_array() };
+                    println!("last err: {}", err);
+                    println!("mbi is null ptr");
+                }
 
-                    let mut err_ret = std::mem::MaybeUninit::<VirtualQueryExErr>::uninit();
-                    use std::ptr::addr_of_mut;
-                    let old_ptr_mut = addr_of_mut!((*err_ret.as_mut_ptr()).old);
-                    let new_ptr_mut = addr_of_mut!((*err_ret.as_mut_ptr()).new);
+                let mut err_ret = std::mem::MaybeUninit::<VirtualQueryExErr>::uninit();
+                use std::ptr::addr_of_mut;
+                let old_ptr_mut = unsafe { addr_of_mut!((*err_ret.as_mut_ptr()).old) };
+                let new_ptr_mut = unsafe { addr_of_mut!((*err_ret.as_mut_ptr()).new) };
 
-                    //check старый hand
-                    {
-                        let h_process = h_process.unwrap(); //безопасно потому что у нас выше и если не там ошибка то ScanProcessStringsError::VirtualQueryEx
-                        let _: usize =
-                            VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
-                        if let Some(x) = addr {
+                //check старый hand
+                {
+                    let h_process = h_process.unwrap(); //безопасно потому что у нас выше и если не там ошибка то ScanProcessStringsError::VirtualQueryEx
+                    let _: usize = unsafe {
+                        VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>())
+                    };
+                    if let Some(x) = addr {
+                        unsafe {
                             *old_ptr_mut = virtual_query_with_diagnostics(h_process, x);
-                        } else {
-                            println!("[DEBUG] None ptr старый hand");
-                            return Err(ScanProcessStringsError::VirtualQueryExNonePtr);
                         }
+                    } else {
+                        println!("[DEBUG] None ptr старый hand");
+                        return Err(ScanProcessStringsError::VirtualQueryExNonePtr);
                     }
-                    //check new open process
-                    {
-                        let err_hand = open_read_process(dwprocessid);
-                        if let Err(e) = err_hand {
-                            println!("[DEBUG] find_strings err_hand Err: {:?}", e);
-                        } else if let Ok(ok) = err_hand {
-                            let err_hand = ok;
+                }
+                //check new open process
+                {
+                    let err_hand = open_read_process(dwprocessid);
+                    if let Err(e) = err_hand {
+                        println!("[DEBUG] find_strings err_hand Err: {:?}", e);
+                    } else if let Ok(ok) = err_hand {
+                        let err_hand = ok;
+                        unsafe {
                             let _: usize = VirtualQueryEx(
                                 ok,
                                 addr,
                                 mbi,
                                 size_of::<MEMORY_BASIC_INFORMATION>(),
                             );
-                            if let Some(x) = addr {
+                        }
+                        if let Some(x) = addr {
+                            unsafe {
                                 *new_ptr_mut = virtual_query_with_diagnostics(err_hand, x);
-                            } else {
-                                println!("[DEBUG] None ptr new hand\n");
-                                return Err(ScanProcessStringsError::VirtualQueryExNonePtr);
                             }
+                        } else {
+                            println!("[DEBUG] None ptr new hand\n");
+                            return Err(ScanProcessStringsError::VirtualQueryExNonePtr);
                         }
                     }
-                    let initialized = err_ret.assume_init();
-                    Err(ScanProcessStringsError::VirtualQueryEx(initialized))
                 }
-                else{
-                    Ok(accumulator)
-                }
-            }
-            Err(e) => {
-                Err(ScanProcessStringsError::OpenProcess(e))
+                let initialized = unsafe { err_ret.assume_init() };
+                Err(ScanProcessStringsError::VirtualQueryEx(initialized))
+            } else {
+                Ok(accumulator)
             }
         }
+        Err(e) => Err(ScanProcessStringsError::OpenProcess(e)),
     }
 }
 
@@ -600,8 +619,7 @@ pub fn scan_process_strings_lossy(
 
     println!("[DEBUG] PID SCAN:\t{dwprocessid}");
 
-    let h_process =
-        unsafe { open_read_process(dwprocessid).map_err(ScanProcessStringsError::OpenProcess)? };
+    let h_process = open_read_process(dwprocessid).map_err(ScanProcessStringsError::OpenProcess)?;
 
     let mut addr: *const c_void = std::ptr::null();
     let mut all_ascii = Vec::new();
