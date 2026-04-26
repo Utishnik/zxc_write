@@ -233,7 +233,7 @@ impl Default for StringCfg {
 }
 
 #[derive(Debug)]
-pub struct ExtractResult {
+pub struct ExtractStrResult {
     pub ascii: Vec<ExtractStr>,
     pub unicode: Vec<ExtractStr>,
 }
@@ -252,7 +252,7 @@ pub enum ScanProcessStringsError {
     VirtualQueryExNonePtr,
 }
 
-pub unsafe fn open_read_process(dwprocessid: u32) -> Result<HANDLE, Error> {
+pub fn open_read_process(dwprocessid: u32) -> Result<HANDLE, Error> {
     unsafe {
         OpenProcess(
             PROCESS_QUERY_INFORMATION | PROCESS_VM_READ,
@@ -260,6 +260,17 @@ pub unsafe fn open_read_process(dwprocessid: u32) -> Result<HANDLE, Error> {
             dwprocessid,
         )
     }
+}
+
+pub type ExtractResult<T> = Vec<Option<Vec<Vec<T>>>>;
+
+#[test]
+fn test() {
+    let mut test: ExtractResult<u8> = (0..10).map(|_| Some(Vec::with_capacity(10))).collect();
+    let p = vec![vec![1_u8]];
+    test.push(Some(p));
+
+    let _: &u8 = test.last().unwrap().clone().unwrap().first().unwrap().first().unwrap();
 }
 
 // TODO ! МЕНЬШЕ UNSAFE
@@ -271,20 +282,14 @@ pub fn scan_process_strings<F, T>(
     processors: &[F],
     start_cap: usize,
     stard_addr: Option<*const c_void>,
-) -> Result<Option<ExtractResult>, ScanProcessStringsError> 
+) -> Result<ExtractResult<T>, ScanProcessStringsError>
 where
-    F: Fn(*const u8, usize, *const c_void) -> Vec<T>,
+    F: Fn(*mut c_void, usize, *const c_void) -> Vec<T>,
 {
     //PROCESS_QUERY_INFORMATION
     println!("[DEBUG] PID SCAN:\t{dwprocessid}");
-    let cfg_ascii: StringCfg = StringCfg::default();
-    let cfg_unicode: StringCfg = StringCfg {
-        min_len: 5,
-        max_len: Some(25),
-    };
-    let mut accumulator: Vec<Vec<T>> = (0..processors.len())
-           .map(|_| Vec::with_capacity(start_cap))
-           .collect();
+    let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
+
     unsafe {
         let h_process = open_read_process(dwprocessid);
         match h_process {
@@ -308,28 +313,18 @@ where
                             let res = byte_read.map_or_else(
                                 || None,
                                 |x| {
-                                    let extract_ascii_str = extract_ascii_strings(
-                                        ptr_buf as *const u8,
-                                        *x,
-                                        base_addr,
-                                        cfg_ascii.min_len,
-                                        cfg_ascii.max_len,
-                                    );
-                                    let extract_unicode_str = extract_unicode_strings(
-                                        ptr_buf as *const u8,
-                                        *x,
-                                        base_addr,
-                                        cfg_unicode.min_len,
-                                        cfg_unicode.max_len.unwrap(),
-                                    );
-                                    let ret: ExtractResult = ExtractResult {
-                                        ascii: extract_ascii_str,
-                                        unicode: extract_unicode_str,
-                                    };
+                                    let mut ret: Vec<Vec<T>> = (0..processors.len())
+                                        .map(|_| Vec::with_capacity(start_cap))
+                                        .collect();
+
+                                    processors.iter().for_each(|item| {
+                                        ret.push(item(ptr_buf, *x, base_addr));
+                                    });
+
                                     Some(ret)
                                 },
                             );
-                            return Ok(res);
+                            accumulator.push(res);
                         } else {
                             return Err(ScanProcessStringsError::ReadProcessMemory);
                         }
@@ -385,15 +380,134 @@ where
                         }
                     }
                     let initialized = err_ret.assume_init();
-                    return Err(ScanProcessStringsError::VirtualQueryEx(initialized));
+                    Err(ScanProcessStringsError::VirtualQueryEx(initialized))
+                }
+                else{
+                    Ok(accumulator)
                 }
             }
             Err(e) => {
-                return Err(ScanProcessStringsError::OpenProcess(e));
+                Err(ScanProcessStringsError::OpenProcess(e))
             }
         }
     }
-    unreachable!();
+}
+
+#[must_use]
+pub fn scan_process_strings_mbi<F, T>(
+    dwprocessid: u32,
+    processors: &[F],
+    start_cap: usize,
+    stard_addr: Option<*const c_void>,
+) -> Result<ExtractResult<T>, ScanProcessStringsError>
+where
+    F: Fn(*mut c_void, usize, *const c_void) -> Vec<T>,
+{
+    //PROCESS_QUERY_INFORMATION
+    println!("[DEBUG] PID SCAN:\t{dwprocessid}");
+    let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
+
+    unsafe {
+        let h_process = open_read_process(dwprocessid);
+        match h_process {
+            Ok(ok) => {
+                let mbi: *mut MEMORY_BASIC_INFORMATION = ptr::null_mut();
+                let addr: Option<*const c_void> = stard_addr;
+                let mut vqe = VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
+                use crate::error_hand::check_mbi::*;
+                while vqe != 0 {
+                    vqe = VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
+                    let get_protect = (*mbi).Protect;
+                    let get_state = (*mbi).State;
+                    let reg_size = (*mbi).RegionSize;
+                    if get_state == MEM_COMMIT && is_readable(get_protect) {
+                        let base_addr: *mut c_void = (*mbi).BaseAddress;
+                        let mut buffer: Vec<u8> = Vec::with_capacity(reg_size);
+                        let ptr_buf: *mut c_void = buffer.as_mut_ptr() as *mut c_void;
+                        let reg_size: usize = (*mbi).RegionSize;
+                        let byte_read: Option<*mut usize> = Some(ptr::null_mut());
+                        if ReadProcessMemory(ok, base_addr, ptr_buf, reg_size, byte_read).is_ok() {
+                            let res = byte_read.map_or_else(
+                                || None,
+                                |x| {
+                                    let mut ret: Vec<Vec<T>> = (0..processors.len())
+                                        .map(|_| Vec::with_capacity(start_cap))
+                                        .collect();
+
+                                    processors.iter().for_each(|item| {
+                                        ret.push(item(ptr_buf, *x, base_addr));
+                                    });
+
+                                    Some(ret)
+                                },
+                            );
+                            accumulator.push(res);
+                        } else {
+                            return Err(ScanProcessStringsError::ReadProcessMemory);
+                        }
+                    }
+                }
+                if vqe == 0 {
+                    //todo это не коректно всегда null будет
+                    if !mbi.is_null() {
+                        let dbg_dmr = describe_memory_region(&*mbi);
+                        println!("[DEBUG] {}", dbg_dmr);
+                    } else {
+                        let err = get_last_error_as_string_array();
+                        println!("last err: {}", err);
+                        println!("mbi is null ptr");
+                    }
+
+                    let mut err_ret = std::mem::MaybeUninit::<VirtualQueryExErr>::uninit();
+                    use std::ptr::addr_of_mut;
+                    let old_ptr_mut = addr_of_mut!((*err_ret.as_mut_ptr()).old);
+                    let new_ptr_mut = addr_of_mut!((*err_ret.as_mut_ptr()).new);
+
+                    //check старый hand
+                    {
+                        let h_process = h_process.unwrap(); //безопасно потому что у нас выше и если не там ошибка то ScanProcessStringsError::VirtualQueryEx
+                        let _: usize =
+                            VirtualQueryEx(ok, addr, mbi, size_of::<MEMORY_BASIC_INFORMATION>());
+                        if let Some(x) = addr {
+                            *old_ptr_mut = virtual_query_with_diagnostics(h_process, x);
+                        } else {
+                            println!("[DEBUG] None ptr старый hand");
+                            return Err(ScanProcessStringsError::VirtualQueryExNonePtr);
+                        }
+                    }
+                    //check new open process
+                    {
+                        let err_hand = open_read_process(dwprocessid);
+                        if let Err(e) = err_hand {
+                            println!("[DEBUG] find_strings err_hand Err: {:?}", e);
+                        } else if let Ok(ok) = err_hand {
+                            let err_hand = ok;
+                            let _: usize = VirtualQueryEx(
+                                ok,
+                                addr,
+                                mbi,
+                                size_of::<MEMORY_BASIC_INFORMATION>(),
+                            );
+                            if let Some(x) = addr {
+                                *new_ptr_mut = virtual_query_with_diagnostics(err_hand, x);
+                            } else {
+                                println!("[DEBUG] None ptr new hand\n");
+                                return Err(ScanProcessStringsError::VirtualQueryExNonePtr);
+                            }
+                        }
+                    }
+                    let initialized = err_ret.assume_init();
+                    Err(ScanProcessStringsError::VirtualQueryEx(initialized))
+                }
+                else{
+                    Ok(accumulator)
+                }
+            }
+            Err(e) => {
+                Err(ScanProcessStringsError::OpenProcess(e))
+            }
+        }
+    }
 }
 
 
@@ -477,7 +591,7 @@ pub fn scan_dynamic_mem<F: Fn(MEMORY_BASIC_INFORMATION) -> bool>(
 pub fn scan_process_strings_lossy(
     dwprocessid: u32,
     vqe_ignore: bool,
-) -> Result<Option<ExtractResult>, ScanProcessStringsError> {
+) -> Result<Option<ExtractStrResult>, ScanProcessStringsError> {
     let cfg_ascii = StringCfg::default();
     let cfg_unicode = StringCfg {
         min_len: 5,
@@ -593,7 +707,7 @@ pub fn scan_process_strings_lossy(
     if all_ascii.is_empty() && all_unicode.is_empty() {
         Ok(None)
     } else {
-        Ok(Some(ExtractResult {
+        Ok(Some(ExtractStrResult {
             ascii: all_ascii,
             unicode: all_unicode,
         }))

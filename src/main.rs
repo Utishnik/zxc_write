@@ -8,7 +8,7 @@ fn wait_close() {
     let _ = std::io::stdin().read_line(&mut buffer);
 }
 
-fn find_strings(dwprocessid: u32) -> Result<ExtractResult, ()> {
+fn find_strings(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
     let strs = scan_process_strings_lossy(dwprocessid, true);
     if let Err(e) = strs {
         println!("[DEBUG] strs Err: {:?}", e);
