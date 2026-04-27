@@ -17,14 +17,14 @@ fn extract_str(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
         max_len: Some(25),
     };
 
-    let mut extract_ascii_strings_fn =
+    let extract_ascii_strings_fn =
         |buf, size, base_ptr| unsafe { extract_ascii_strings(buf, size, base_ptr, 10, None) };
-    let mut extract_unicode_strings_fn =
+    let extract_unicode_strings_fn =
         |buf, size, base_ptr| unsafe { extract_unicode_strings(buf, size, base_ptr, 10, None) };
 
     let mut processors = [extract_ascii_strings_fn, extract_unicode_strings_fn];
 
-    let result: Result<ExtractResult<ExtractStr>, _> = unsafe {
+    let result: Result<ExtractResult<ExtractStr>, _> = {
         scan_process_processors_lossy_gen(
             dwprocessid,
             processors.as_mut_slice(),
@@ -80,7 +80,7 @@ fn get_childs(pid: u32) {
             })
             .collect::<Vec<String>>();
         println!("{}", names.vec_string(DEFAULT_FORMAT_RULE));
-        for &item in pids_vec.iter().rev() {
+        for &item in pids_vec.iter() {
             let find_res = find_strings(item);
 
             if find_res.is_err() {
