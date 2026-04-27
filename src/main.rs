@@ -66,6 +66,27 @@ fn find_strings(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
     Ok(strs.unwrap())
 }
 
+fn get_childs_dyn(pid: u32) {
+    let childs = get_child_processes(pid);
+    if let Err(e) = childs {
+        println!("[ERROR] get_childs {:?}", e);
+    } else if let Ok(ok) = childs {
+        let mut pids_vec: Vec<u32> = Vec::new();
+        let names = ok
+            .iter()
+            .map(|x| {
+                pids_vec.push(x.0);
+                format!("name exe {}\tpid: {}", x.1.clone(), x.0)
+            })
+            .collect::<Vec<String>>();
+        for &item in pids_vec.iter().rev() {
+            let scan_res = scan_dynamic_mem(item, 4096, 8096);
+        }
+    } else {
+        unreachable!();
+    }
+}
+
 fn get_childs(pid: u32) {
     let childs = get_child_processes(pid);
     if let Err(e) = childs {
@@ -80,7 +101,7 @@ fn get_childs(pid: u32) {
             })
             .collect::<Vec<String>>();
         println!("{}", names.vec_string(DEFAULT_FORMAT_RULE));
-        for &item in pids_vec.iter() {
+        for &item in pids_vec.iter().rev() {
             let find_res = find_strings(item);
 
             if find_res.is_err() {

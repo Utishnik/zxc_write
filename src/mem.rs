@@ -474,7 +474,7 @@ where
 }
 
 use crate::utils::HandleGuard;
-pub fn scan_dynamic_mem<F: Fn(MEMORY_BASIC_INFORMATION) -> bool>(
+pub fn scan_dynamic_mem_custom_filter<F: Fn(MEMORY_BASIC_INFORMATION) -> bool>(
     pid: u32,
     jmp_len: usize,
     max_cap: usize,
@@ -523,6 +523,70 @@ pub fn scan_dynamic_mem<F: Fn(MEMORY_BASIC_INFORMATION) -> bool>(
                 addr = next as *const _; //skip
                 continue;
             }
+            let ok = unsafe {
+                ReadProcessMemory(
+                    h_process,
+                    mbi.BaseAddress,
+                    buf.as_mut_ptr() as *mut _,
+                    size,
+                    Some(&mut read),
+                )
+                .is_ok()
+            };
+
+            if ok && read > 0 {
+                ret.push(ReadProcessMemoryResult { mbi, read, buf });
+            }
+        }
+
+        addr = next as *const _;
+    }
+
+    Ok(ret)
+}
+
+pub fn scan_dynamic_mem(
+    pid: u32,
+    jmp_len: usize,
+    max_cap: usize,
+) -> windows::core::Result<Vec<ReadProcessMemoryResult>> {
+    let mut ret: Vec<ReadProcessMemoryResult> = Vec::new();
+    let h_process =
+        unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid)? };
+    let _guard = HandleGuard(h_process);
+    let mut addr: *const std::ffi::c_void = std::ptr::null();
+
+    loop {
+        let mut mbi = MEMORY_BASIC_INFORMATION::default();
+        let result = unsafe {
+            VirtualQueryEx(
+                h_process,
+                Some(addr),
+                &mut mbi,
+                std::mem::size_of::<MEMORY_BASIC_INFORMATION>(),
+            )
+        };
+
+        if result == 0 {
+            let err = unsafe { windows::Win32::Foundation::GetLastError() };
+            if err == ERROR_INVALID_ADDRESS {
+                break;
+            }
+            // Пропускаем ошибку, двигаемся вперёд
+            addr = ((addr as usize) + jmp_len) as *const _;
+            continue;
+        }
+
+        let next = (mbi.BaseAddress as usize) + mbi.RegionSize;
+
+        // ФИЛЬТР: только динамическая память (куча/стек), не модули, не маппинги
+        let is_dynamic =
+            mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE && is_readwrite(mbi.Protect);
+
+        if is_dynamic {
+            let size = mbi.RegionSize.min(max_cap);
+            let mut buf = vec![0_u8; size];
+            let mut read = 0_usize;
             let ok = unsafe {
                 ReadProcessMemory(
                     h_process,
