@@ -56,7 +56,7 @@ fn extract_str_dyn_mem(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
         |buf, size, base_ptr| unsafe { extract_ascii_strings(buf, size, base_ptr, 5, None) };
     let extract_unicode_strings_fn =
         |buf, size, base_ptr| unsafe { extract_unicode_strings(buf, size, base_ptr, 5, None) };
-    let scan_res = scan_dynamic_mem(dwprocessid, 4096, 8012, 650000);
+    let scan_res = scan_dynamic_mem(dwprocessid, 409600, 650000, 101704332083002);
 
     if let Err(_) = scan_res {
         return Err(());
@@ -110,7 +110,7 @@ fn get_childs_dyn(pid: u32) {
             })
             .collect::<Vec<String>>();
         println!("{}", names.vec_string(DEFAULT_FORMAT_RULE));
-        for &item in pids_vec.iter().rev() {
+        for &item in pids_vec.iter() {
             let find_res = extract_str_dyn_mem(item);
             if find_res.is_err() {
                 println!("find strings failed: None");

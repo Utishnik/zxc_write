@@ -596,7 +596,6 @@ pub fn scan_dynamic_mem(
         // ФИЛЬТР: только динамическая память (куча/стек), не модули, не маппинги
         let is_dynamic =
             mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE && is_readwrite(mbi.Protect);
-
         if is_dynamic {
             let size = mbi.RegionSize.min(max_cap);
             let mut buf = vec![0_u8; size];
