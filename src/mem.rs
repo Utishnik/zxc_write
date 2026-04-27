@@ -61,7 +61,7 @@ pub const fn is_null_utf16le(c1: u8, c2: u8) -> bool {
     c1 == 0x00 && c2 == 0x00
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone)]
 pub struct ExtractStr {
     pub base_addr: *mut core::ffi::c_void,
     pub str: String,
@@ -83,7 +83,7 @@ pub struct ReadProcessMemoryResult {
 ///# Safety
 ///
 pub unsafe fn extract_ascii_strings(
-    buf: *const u8,
+    buf: *const c_void,
     size: usize,
     base_ptr: *const core::ffi::c_void,
     min_len: usize,
@@ -96,7 +96,7 @@ pub unsafe fn extract_ascii_strings(
     for i in 0..size {
         unsafe {
             if is_printable_char(buf.add(i) as u8) {
-                let as_char = (*buf.add(i)) as char;
+                let as_char = (*(buf as *const u8).add(i)) as char;
                 cur_char = as_char;
                 cur.push(as_char);
             } else {
@@ -172,7 +172,7 @@ pub unsafe fn get_u8_to_buf(
 /// # Safety
 /// при валидных inputs
 pub unsafe fn extract_unicode_strings(
-    buf: *const u8,
+    buf: *const c_void,
     size: usize,
     base_ptr: *const c_void,
     min_len: usize,
@@ -182,11 +182,10 @@ pub unsafe fn extract_unicode_strings(
     let mut cur: String = String::default();
     let mut start_offset: usize = 0;
     let max_len_some: bool = max_len.is_some();
-
     let mut i: usize = 0;
     while i + 1 < size {
-        let c1 = unsafe { *buf.add(i) };
-        let c2 = unsafe { *buf.add(i + 1) };
+        let c1 = unsafe { *(buf as *const u8).add(i) };
+        let c2 = unsafe { *(buf as *const u8).add(i + 1) };
 
         if is_null_utf16le(c1, c2) {
             // Null terminator — конец строки
@@ -546,16 +545,27 @@ pub fn scan_dynamic_mem<F: Fn(MEMORY_BASIC_INFORMATION) -> bool>(
     Ok(ret)
 }
 
+macro_rules! gen_dispatch {
+    ($($f:ty),*) => {
+        pub enum ProcessorsDispatch{
+            $(f),*
+        }
+    };
+}
+
 /// Универсальный обход памяти процесса с извлечением данных.
 /// Принимает срез замыканий, каждое из которых вызывается для каждого читабельного региона.
 /// Возвращает `Vec<Option<Vec<Vec<T>>>>` — по одному `Option` на регион,
 /// внутри `Some` лежит результат каждого обработчика (`Vec<T>` на обработчик).
-pub fn scan_process_strings_lossy<T>(
+pub fn scan_process_processors_lossy_gen<T, F>(
     dwprocessid: u32,
-    processors: &[fn(*mut c_void, usize, *const c_void) -> Vec<T>],
+    processors: &mut [F],
     start_cap: usize,
     start_addr: Option<*const c_void>,
-) -> Result<ExtractResult<T>, ScanProcessStringsError> {
+) -> Result<ExtractResult<T>, ScanProcessStringsError>
+where
+    F: FnMut(*const c_void, usize, *const c_void) -> Vec<T>,
+{
     println!("[DEBUG] PID SCAN:\t{dwprocessid}");
 
     let h_process = open_read_process(dwprocessid).map_err(ScanProcessStringsError::OpenProcess)?;
@@ -619,7 +629,7 @@ pub fn scan_process_strings_lossy<T>(
 
         if read_ok && bytes_read > 0 {
             let region_results: Vec<Vec<T>> = processors
-                .iter()
+                .iter_mut()
                 .map(|proc| proc(buffer.as_mut_ptr() as *mut c_void, bytes_read, base_addr))
                 .collect();
             accumulator.push(Some(region_results));
