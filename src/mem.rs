@@ -549,12 +549,14 @@ pub fn scan_dynamic_mem(
     pid: u32,
     jmp_len: usize,
     max_cap: usize,
+    max_addr_offset: usize,
 ) -> windows::core::Result<Vec<ReadProcessMemoryResult>> {
     let mut ret: Vec<ReadProcessMemoryResult> = Vec::new();
     let h_process =
         unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid)? };
     let _guard = HandleGuard(h_process);
     let mut addr: *const std::ffi::c_void = std::ptr::null();
+    let mut start_addr: *const c_void = std::ptr::null();
 
     loop {
         let mut mbi = MEMORY_BASIC_INFORMATION::default();
@@ -566,6 +568,18 @@ pub fn scan_dynamic_mem(
                 std::mem::size_of::<MEMORY_BASIC_INFORMATION>(),
             )
         };
+        if start_addr.is_null() {
+            start_addr = addr;
+        } else {
+            let check_addr = start_addr as usize;
+            let addr = addr as usize;
+            let res = addr.checked_sub(check_addr);
+            if let Some(x) = res
+                && x > max_addr_offset
+            {
+                break;
+            }
+        }
 
         if result == 0 {
             let err = unsafe { windows::Win32::Foundation::GetLastError() };

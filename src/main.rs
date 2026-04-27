@@ -53,21 +53,17 @@ fn extract_str(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
 
 fn extract_str_dyn_mem(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
     let extract_ascii_strings_fn =
-        |buf, size, base_ptr| unsafe { extract_ascii_strings(buf, size, base_ptr, 10, None) };
+        |buf, size, base_ptr| unsafe { extract_ascii_strings(buf, size, base_ptr, 5, None) };
     let extract_unicode_strings_fn =
-        |buf, size, base_ptr| unsafe { extract_unicode_strings(buf, size, base_ptr, 10, None) };
-    println!("SCAN DYN START");
-    let scan_res = scan_dynamic_mem(dwprocessid, 4096, 512);
-    println!("SCAN DYN FINISH");
+        |buf, size, base_ptr| unsafe { extract_unicode_strings(buf, size, base_ptr, 5, None) };
+    let scan_res = scan_dynamic_mem(dwprocessid, 4096, 8012, 650000);
 
     if let Err(_) = scan_res {
         return Err(());
     }
     let scan_res = scan_res.unwrap();
     let mut processors = [extract_ascii_strings_fn, extract_unicode_strings_fn];
-    println!("SCAN MBI START");
     let result = scan_process_processors_mbi(dwprocessid, &mut processors, 512, scan_res);
-    println!("SCAN MBI FINISH");
     if let Ok(extract_result) = result {
         let all_ascii: Vec<_> = extract_result
             .iter()
