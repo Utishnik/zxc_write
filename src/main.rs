@@ -11,12 +11,6 @@ fn wait_close() {
 }
 
 fn extract_str(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
-    let cfg_ascii = StringCfg::default(); // min_len = 4, max_len = None
-    let cfg_unicode = StringCfg {
-        min_len: 5,
-        max_len: Some(25),
-    };
-
     let extract_ascii_strings_fn =
         |buf, size, base_ptr| unsafe { extract_ascii_strings(buf, size, base_ptr, 10, None) };
     let extract_unicode_strings_fn =
@@ -27,13 +21,53 @@ fn extract_str(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
     let result: Result<ExtractResult<ExtractStr>, _> = {
         scan_process_processors_lossy_gen(
             dwprocessid,
-            processors.as_mut_slice(),
+            &mut processors,
             16,   // start_cap
             None, // начать с NULL
         )
     };
 
     // Извлечь плоский список всех строк (объединяя ascii+unicode из всех регионов)
+    if let Ok(extract_result) = result {
+        let all_ascii: Vec<_> = extract_result
+            .iter()
+            .filter_map(|opt| Some(opt))
+            .flat_map(|per_proc| per_proc.into_iter().nth(0)) // ascii — первый обработчик
+            .flatten()
+            .collect();
+        let all_unicode: Vec<_> = extract_result
+            .iter()
+            .filter_map(|opt| Some(opt))
+            .flat_map(|per_proc| per_proc.into_iter().nth(1)) // unicode — второй обработчик
+            .flatten()
+            .collect();
+        let res: ExtractStrResult = ExtractStrResult {
+            ascii: vec_flat2_owned_xz(all_ascii),
+            unicode: vec_flat2_owned_xz(all_unicode),
+        };
+        Ok(res)
+    } else {
+        Err(())
+    }
+}
+
+fn extract_str_dyn_mem(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
+    let extract_ascii_strings_fn =
+        |buf, size, base_ptr| unsafe { extract_ascii_strings(buf, size, base_ptr, 10, None) };
+    let extract_unicode_strings_fn =
+        |buf, size, base_ptr| unsafe { extract_unicode_strings(buf, size, base_ptr, 10, None) };
+    println!("SCAN DYN START");
+    let scan_res = scan_dynamic_mem(dwprocessid, 4096, 512);
+    println!("SCAN DYN FINISH");
+
+    if let Err(_) = scan_res {
+        return Err(());
+    }
+    let scan_res = scan_res.unwrap();
+    let mut processors = [extract_ascii_strings_fn, extract_unicode_strings_fn];
+    println!("SCAN MBI START");
+    let result = scan_process_processors_mbi(dwprocessid, &mut processors, 512, scan_res);
+    println!("SCAN MBI FINISH");
     if let Ok(extract_result) = result {
         let all_ascii: Vec<_> = extract_result
             .iter()
@@ -79,8 +113,20 @@ fn get_childs_dyn(pid: u32) {
                 format!("name exe {}\tpid: {}", x.1.clone(), x.0)
             })
             .collect::<Vec<String>>();
+        println!("{}", names.vec_string(DEFAULT_FORMAT_RULE));
         for &item in pids_vec.iter().rev() {
-            let scan_res = scan_dynamic_mem(item, 4096, 8096);
+            let find_res = extract_str_dyn_mem(item);
+            if find_res.is_err() {
+                println!("find strings failed: None");
+                wait_close();
+                return;
+            }
+            let find_res = find_res.unwrap();
+            println!("Ascii:\t{}", find_res.ascii.vec_string(DEFAULT_FORMAT_RULE));
+            println!(
+                "Unicode:\t{}",
+                find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
+            );
         }
     } else {
         unreachable!();
@@ -136,7 +182,7 @@ fn main() {
     }
     let pid = fnd_name.unwrap();
     println!("[DEBUG] pid: {}", pid);
-    get_childs(pid);
+    get_childs_dyn(pid);
     return; //
     let find_res = find_strings(pid);
     if find_res.is_err() {
