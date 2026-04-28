@@ -132,16 +132,19 @@ fn get_childs_dyn(pid: u32) {
                 let finds_uc: Vec<String> = find_res
                     .unicode
                     .iter()
-                    .filter(|x| x.str.find("EGUI").is_some())
+                    .filter(|x| x.str.find("ThreadPool").is_some())
                     .map(|x| x.str.clone())
                     .collect();
                 let finds_ascii: Vec<String> = find_res
                     .ascii
                     .iter()
-                    .filter(|x| x.str.find("EGUI").is_some())
+                    .filter(|x| x.str.find("ThreadPool").is_some())
                     .map(|x| x.str.clone())
                     .collect();
-                println!("finds unicode vk: {}",finds_uc.vec_string(DEFAULT_FORMAT_RULE));
+                println!(
+                    "finds unicode vk: {}",
+                    finds_uc.vec_string(DEFAULT_FORMAT_RULE)
+                );
                 println!(
                     "finds ascii vk: {}",
                     finds_ascii.vec_string(DEFAULT_FORMAT_RULE)
@@ -179,21 +182,31 @@ fn get_childs(pid: u32) {
             })
             .collect::<Vec<String>>();
         println!("{}", names.vec_string(DEFAULT_FORMAT_RULE));
+        let cnt_pids = pids_vec.len();
+        let pool = ThreadPool::new(cnt_pids);
+        let an_atomic = Arc::new(AtomicUsize::new(0));
         for &item in pids_vec.iter().rev() {
-            let find_res = find_strings(item);
+            let an_atomic = an_atomic.clone();
+            pool.execute(move || {
+                let find_res = find_strings(item);
 
-            if find_res.is_err() {
-                println!("find strings failed: None");
-                wait_close();
-                return;
-            }
-            let find_res = find_res.unwrap();
-            println!("Ascii:\t{}", find_res.ascii.vec_string(DEFAULT_FORMAT_RULE));
-            println!(
-                "Unicode:\t{}",
-                find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
-            );
+                if find_res.is_err() {
+                    println!("find strings failed: None");
+                    wait_close();
+                    return;
+                }
+                let find_res = find_res.unwrap();
+                println!("Ascii:\t{}", find_res.ascii.vec_string(DEFAULT_FORMAT_RULE));
+                println!(
+                    "Unicode:\t{}",
+                    find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
+                );
+                an_atomic.fetch_add(1, Ordering::Relaxed);
+            });
         }
+        while let load = an_atomic.load(Ordering::Relaxed)
+            && load != cnt_pids
+        {}
     } else {
         unreachable!();
     }
