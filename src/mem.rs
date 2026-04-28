@@ -550,13 +550,14 @@ pub fn scan_dynamic_mem(
     jmp_len: usize,
     max_cap: usize,
     max_addr_offset: usize,
+    start_addres: Option<*const c_void>,
 ) -> windows::core::Result<Vec<ReadProcessMemoryResult>> {
     let mut ret: Vec<ReadProcessMemoryResult> = Vec::new();
     let h_process =
         unsafe { OpenProcess(PROCESS_QUERY_INFORMATION | PROCESS_VM_READ, false, pid)? };
     let _guard = HandleGuard(h_process);
-    let mut addr: *const std::ffi::c_void = std::ptr::null();
-    let mut start_addr: *const c_void = std::ptr::null();
+    let mut addr: *const std::ffi::c_void = start_addres.unwrap_or(ptr::null());
+    let mut check_addr: *const c_void = addr;
 
     loop {
         let mut mbi = MEMORY_BASIC_INFORMATION::default();
@@ -568,10 +569,10 @@ pub fn scan_dynamic_mem(
                 std::mem::size_of::<MEMORY_BASIC_INFORMATION>(),
             )
         };
-        if start_addr.is_null() {
-            start_addr = addr;
+        if check_addr.is_null() {
+            check_addr = addr;
         } else {
-            let check_addr = start_addr as usize;
+            let check_addr = check_addr as usize;
             let addr = addr as usize;
             let res = addr.checked_sub(check_addr);
             if let Some(x) = res
@@ -638,6 +639,7 @@ pub fn scan_process_processors_lossy_gen<T, F>(
     dwprocessid: u32,
     processors: &mut [F],
     start_cap: usize,
+    max_addr_offset: usize,
     start_addr: Option<*const c_void>,
 ) -> Result<ExtractResult<T>, ScanProcessStringsError>
 where
@@ -649,6 +651,7 @@ where
 
     let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
     let mut addr = start_addr.unwrap_or(ptr::null());
+    let mut check_addr = addr;
 
     loop {
         let mut mbi: MEMORY_BASIC_INFORMATION = unsafe { std::mem::zeroed() };
@@ -661,6 +664,19 @@ where
                 size_of::<MEMORY_BASIC_INFORMATION>(),
             )
         };
+
+        if check_addr.is_null() {
+            check_addr = addr;
+        } else {
+            let check_addr = check_addr as usize;
+            let addr = addr as usize;
+            let res = addr.checked_sub(check_addr);
+            if let Some(x) = res
+                && x > max_addr_offset
+            {
+                break;
+            }
+        }
 
         if result == 0 {
             let err = unsafe { GetLastError() };
