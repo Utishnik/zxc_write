@@ -19,3 +19,4 @@ windows = {version = "0.62.2", features  = [
 
 }
 vec-string = {git = "https://github.com/Utishnik/vec-string"}
+threadpool = "1.8.1"
