@@ -57,3 +57,23 @@ where
         .map(|x| x.clone())
         .collect()
 }
+
+#[must_use]
+pub fn jobs_disp<T>(jobs_vec_len: usize, work_vec: Vec<T>) -> Vec<Vec<T>>
+where
+    T: Clone,
+{
+    let mut jobs_vec: Vec<Vec<T>> = Vec::with_capacity(jobs_vec_len);
+    let mut cur_job: Vec<T> = Vec::new();
+    let mut i = 0;
+    for item in work_vec.iter() {
+        if i >= jobs_vec_len {
+            jobs_vec.push(cur_job.clone());
+            i = 0;
+            cur_job.clear();
+        }
+        cur_job.push(item.clone());
+        i += 1;
+    }
+    jobs_vec
+}
