@@ -5,7 +5,10 @@ use windows::{
     Win32::{
         Foundation::*,
         System::{
-            Diagnostics::{Debug::ReadProcessMemory, ToolHelp::*},
+            Diagnostics::{
+                Debug::{ReadProcessMemory, WriteProcessMemory},
+                ToolHelp::*,
+            },
             LibraryLoader::*,
             Memory::*,
             Threading::*,
@@ -648,6 +651,7 @@ where
     println!("[DEBUG] PID SCAN:\t{dwprocessid}");
 
     let h_process = open_read_process(dwprocessid).map_err(ScanProcessStringsError::OpenProcess)?;
+    let _guard = HandleGuard(h_process);
 
     let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
     let mut addr = start_addr.unwrap_or(ptr::null());
@@ -735,9 +739,56 @@ where
         addr = unsafe { base_addr.add(reg_size) };
     }
 
-    unsafe {
-        CloseHandle(h_process).ok();
+    Ok(accumulator)
+}
+
+pub unsafe fn write_process_memory(
+    pid: u32,
+    target_addr: *mut c_void,
+    data: &[u8],
+) -> windows::core::Result<usize> {
+    let h_process = unsafe { OpenProcess(PROCESS_VM_OPERATION | PROCESS_VM_WRITE, false, pid)? };
+    let _guard = HandleGuard(h_process);
+
+    let mut written = 0_usize;
+
+    let mbi: *mut MEMORY_BASIC_INFORMATION = std::ptr::null_mut();
+    let res_get = unsafe { VirtualQueryEx(h_process, Some(target_addr), mbi, data.len()) };
+    if res_get == 0 {
+        return Ok(0);
     }
 
-    Ok(accumulator)
+    let mut old_protect = unsafe { (*mbi).Protect };
+    if old_protect != PAGE_EXECUTE_READWRITE {
+        let _ = unsafe {
+            VirtualProtectEx(
+                h_process,
+                target_addr,
+                data.len(),
+                PAGE_EXECUTE_READWRITE,
+                &mut old_protect,
+            )?
+        };
+    }
+
+    unsafe {
+        WriteProcessMemory(
+            h_process,
+            target_addr,
+            data.as_ptr() as *const c_void,
+            data.len(),
+            Some(&mut written),
+        )?;
+    }
+
+    // Восстанавливаем старую защиту (если меняли)
+    if old_protect != PAGE_EXECUTE_READWRITE {
+        let mut _tmp = PAGE_PROTECTION_FLAGS(0);
+
+        let _ = unsafe {
+            VirtualProtectEx(h_process, target_addr, data.len(), old_protect, &mut _tmp)?
+        };
+    }
+
+    Ok(written)
 }
