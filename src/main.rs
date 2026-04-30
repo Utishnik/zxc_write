@@ -156,7 +156,6 @@ fn get_childs_dyn(pid: u32) {
                         "finds ascii vk: {}",
                         finds_ascii.vec_string(DEFAULT_FORMAT_RULE)
                     );
-
                     an_atomic.fetch_add(1, Ordering::Relaxed);
                 }
             });
@@ -195,23 +194,27 @@ fn get_childs(pid: u32) {
         let cnt_pids = pids_vec.len();
         let pool = ThreadPool::new(cnt_pids);
         let an_atomic = Arc::new(AtomicUsize::new(0));
-        for &item in pids_vec.iter().rev() {
+        let avb_p = std::thread::available_parallelism().unwrap_or(NonZero::new(8).unwrap());
+        let cnt_job = cnt_pids / avb_p;
+        let jobs_vec = jobs_disp(cnt_job, pids_vec);
+        for jobs in jobs_vec.into_iter() {
             let an_atomic = an_atomic.clone();
             pool.execute(move || {
-                let find_res = find_strings(item);
-
-                if find_res.is_err() {
-                    println!("find strings failed: None");
-                    wait_close();
-                    return;
+                for item in jobs {
+                    let find_res = find_strings(item);
+                    if find_res.is_err() {
+                        println!("find strings failed: None");
+                        wait_close();
+                        return;
+                    }
+                    let find_res = find_res.unwrap();
+                    println!("Ascii:\t{}", find_res.ascii.vec_string(DEFAULT_FORMAT_RULE));
+                    println!(
+                        "Unicode:\t{}",
+                        find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
+                    );
+                    an_atomic.fetch_add(1, Ordering::Relaxed);
                 }
-                let find_res = find_res.unwrap();
-                println!("Ascii:\t{}", find_res.ascii.vec_string(DEFAULT_FORMAT_RULE));
-                println!(
-                    "Unicode:\t{}",
-                    find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
-                );
-                an_atomic.fetch_add(1, Ordering::Relaxed);
             });
         }
         while let load = an_atomic.load(Ordering::Relaxed)

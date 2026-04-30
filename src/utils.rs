@@ -66,14 +66,18 @@ where
     let mut jobs_vec: Vec<Vec<T>> = Vec::with_capacity(jobs_vec_len);
     let mut cur_job: Vec<T> = Vec::new();
     let mut i = 0;
+
     for item in work_vec.iter() {
-        if i >= jobs_vec_len {
-            jobs_vec.push(cur_job.clone());
+        if i == jobs_vec_len {
             i = 0;
+            jobs_vec.push(cur_job.clone());
             cur_job.clear();
         }
         cur_job.push(item.clone());
         i += 1;
+    }
+    if cur_job.len() > 0 {
+        jobs_vec.push(cur_job);
     }
     jobs_vec
 }
