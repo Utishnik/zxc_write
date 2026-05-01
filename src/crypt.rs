@@ -45,6 +45,22 @@ pub mod aes256 {
         cipher.decrypt(nonce, data)
     }
 
+    pub fn decrypt_more(
+        key: &[u8; 32],
+        data: &[&[u8]],
+        nonce_get: &[u8; 12],
+    ) -> Result<Vec<Result<Vec<u8>>>> {
+        let key = Key::<Aes256Gcm>::from_slice(key);
+        let nonce = Nonce::from_slice(nonce_get);
+        let cipher = Aes256Gcm::new(key);
+        let mut ret = Vec::with_capacity(data.len());
+        for &item in data.iter() {
+            let crypt = cipher.decrypt(nonce, item);
+            ret.push(crypt);
+        }
+        Ok(ret)
+    }
+
     #[test]
     fn t() {
         let msg = b"Hello World";
@@ -99,6 +115,22 @@ pub mod aes128 {
         let mut ret = Vec::with_capacity(data.len());
         for &item in data.iter() {
             let crypt = cipher.encrypt(nonce, item);
+            ret.push(crypt);
+        }
+        Ok(ret)
+    }
+
+    pub fn decrypt_more(
+        key: &[u8; 32],
+        data: &[&[u8]],
+        nonce_get: &[u8; 12],
+    ) -> Result<Vec<Result<Vec<u8>>>> {
+        let key = Key::<Aes128Gcm>::from_slice(key);
+        let nonce = Nonce::from_slice(nonce_get);
+        let cipher = Aes128Gcm::new(key);
+        let mut ret = Vec::with_capacity(data.len());
+        for &item in data.iter() {
+            let crypt = cipher.decrypt(nonce, item);
             ret.push(crypt);
         }
         Ok(ret)
