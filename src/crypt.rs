@@ -1,3 +1,13 @@
+use aes_gcm::aead::Result;
+pub fn lossy_slice_more_data(data: &Vec<Result<Vec<u8>>>) -> Vec<&[u8]> {
+    let mut slices = Vec::new();
+    for item in data.iter() {
+        let item = item.as_ref().unwrap();
+        slices.push(item.as_slice());
+    }
+    slices
+}
+
 pub mod aes256 {
     use aes_gcm::aead::{Aead, KeyInit, Result};
     use aes_gcm::{Aes256Gcm, Key, Nonce};
@@ -73,12 +83,36 @@ pub mod aes256 {
         let dc_str = String::from_utf8_lossy(dc.unwrap().as_slice()).to_string();
         println!("{dc_str}");
     }
+
+    #[test]
+    fn t_more() {
+        let msg = b"Hello World";
+        let key = generate_key_aes256().unwrap();
+        let n = generate_nonce().unwrap();
+        let ec = more_encrypt(&key, &[msg], &n);
+        let ec_strs = Vec::from_iter(
+            ec.clone()
+                .unwrap()
+                .into_iter()
+                .map(|x| String::from_utf8_lossy(x.unwrap().as_slice()).to_string()),
+        );
+        for ec_str in ec_strs.iter() {
+            println!("{ec_str}");
+        }
+        let ec = ec.unwrap();
+        let lossy_slices = super::lossy_slice_more_data(&ec);
+        let dc = decrypt_more(&key, &lossy_slices, &n);
+        for item in dc.clone().unwrap().into_iter() {
+            let dc_str = String::from_utf8_lossy(item.unwrap().as_slice()).to_string();
+            println!("{dc_str}");
+        }
+    }
 }
 
 pub mod aes128 {
     use aes_gcm::{
         Aes128Gcm, Nonce,
-        aead::{Aead, Key, KeyInit, Result},
+        aead::{Aead, Key, KeyInit, Result, generic_array::iter},
     };
     use getrandom;
     pub fn generate_key_aes128() -> core::result::Result<[u8; 16], getrandom::Error> {
@@ -105,7 +139,7 @@ pub mod aes128 {
     }
 
     pub fn more_encrypt(
-        key: &[u8; 32],
+        key: &[u8; 16],
         data: &[&[u8]],
         nonce_get: &[u8; 12],
     ) -> Result<Vec<Result<Vec<u8>>>> {
@@ -121,7 +155,7 @@ pub mod aes128 {
     }
 
     pub fn decrypt_more(
-        key: &[u8; 32],
+        key: &[u8; 16],
         data: &[&[u8]],
         nonce_get: &[u8; 12],
     ) -> Result<Vec<Result<Vec<u8>>>> {
@@ -147,5 +181,29 @@ pub mod aes128 {
         let dc = decrypt(&key, ec.unwrap().as_slice(), &n);
         let dc_str = String::from_utf8_lossy(dc.unwrap().as_slice()).to_string();
         println!("{dc_str}");
+    }
+
+    #[test]
+    fn t_more() {
+        let msg = b"Hello World";
+        let key = generate_key_aes128().unwrap();
+        let n = generate_nonce().unwrap();
+        let ec = more_encrypt(&key, &[msg], &n);
+        let ec_strs = Vec::from_iter(
+            ec.clone()
+                .unwrap()
+                .into_iter()
+                .map(|x| String::from_utf8_lossy(x.unwrap().as_slice()).to_string()),
+        );
+        for ec_str in ec_strs.iter() {
+            println!("{ec_str}");
+        }
+        let ec = ec.unwrap();
+        let lossy_slices = super::lossy_slice_more_data(&ec);
+        let dc = decrypt_more(&key, &lossy_slices, &n);
+        for item in dc.clone().unwrap().into_iter() {
+            let dc_str = String::from_utf8_lossy(item.unwrap().as_slice()).to_string();
+            println!("{dc_str}");
+        }
     }
 }
