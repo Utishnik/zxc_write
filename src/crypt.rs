@@ -22,6 +22,22 @@ pub mod aes256 {
         cipher.encrypt(nonce, data)
     }
 
+    pub fn more_encrypt(
+        key: &[u8; 32],
+        data: &[&[u8]],
+        nonce_get: &[u8; 12],
+    ) -> Result<Vec<Result<Vec<u8>>>> {
+        let key = Key::<Aes256Gcm>::from_slice(key);
+        let cipher = Aes256Gcm::new(key);
+        let nonce = Nonce::from_slice(nonce_get);
+        let mut ret = Vec::with_capacity(data.len());
+        for &item in data.iter() {
+            let crypt = cipher.encrypt(nonce, item);
+            ret.push(crypt);
+        }
+        Ok(ret)
+    }
+
     pub fn decrypt(key: &[u8; 32], data: &[u8], nonce_get: &[u8; 12]) -> Result<Vec<u8>> {
         let key = Key::<Aes256Gcm>::from_slice(key);
         let nonce = Nonce::from_slice(nonce_get);
@@ -47,7 +63,6 @@ pub mod aes128 {
     use aes_gcm::{
         Aes128Gcm, Nonce,
         aead::{Aead, Key, KeyInit, Result},
-        aes::Aes128,
     };
     use getrandom;
     pub fn generate_key_aes128() -> core::result::Result<[u8; 16], getrandom::Error> {
@@ -71,6 +86,22 @@ pub mod aes128 {
         let nonce = Nonce::from_slice(nonce_get);
         let cipher = Aes128Gcm::new(key);
         cipher.decrypt(nonce, data)
+    }
+
+    pub fn more_encrypt(
+        key: &[u8; 32],
+        data: &[&[u8]],
+        nonce_get: &[u8; 12],
+    ) -> Result<Vec<Result<Vec<u8>>>> {
+        let key = Key::<Aes128Gcm>::from_slice(key);
+        let cipher = Aes128Gcm::new(key);
+        let nonce = Nonce::from_slice(nonce_get);
+        let mut ret = Vec::with_capacity(data.len());
+        for &item in data.iter() {
+            let crypt = cipher.encrypt(nonce, item);
+            ret.push(crypt);
+        }
+        Ok(ret)
     }
 
     #[test]
