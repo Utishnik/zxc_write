@@ -82,9 +82,14 @@ where
     jobs_vec
 }
 
-#[repr(transparent)]
 #[derive(Debug, Clone, Copy)]
-pub struct SendablePtr(pub *const std::ffi::c_void);
+pub struct SendablePtr<T:Clone>(pub *const T);
 
-unsafe impl Send for SendablePtr {}
-unsafe impl Sync for SendablePtr {}
+unsafe impl<T:Clone> Send for SendablePtr<T> {}
+unsafe impl<T:Clone> Sync for SendablePtr<T> {}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SendablePtrMut<T:Clone>(pub *mut T);
+
+unsafe impl<T:Clone> Send for SendablePtrMut<T> {}
+unsafe impl<T:Clone> Sync for SendablePtrMut<T> {}
