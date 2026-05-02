@@ -28,13 +28,13 @@ pub mod aes256 {
     use getrandom::fill;
 
     pub fn generate_key_aes256() -> core::result::Result<[u8; 32], getrandom::Error> {
-        let mut buf = [0u8; 32];
+        let mut buf = [0_u8; 32];
         fill(&mut buf)?;
         Ok(buf)
     }
 
     pub fn generate_nonce() -> core::result::Result<[u8; 12], getrandom::Error> {
-        let mut buf = [0u8; 12];
+        let mut buf = [0_u8; 12];
         fill(&mut buf)?;
         Ok(buf)
     }
@@ -126,7 +126,7 @@ pub mod aes256 {
 
         let lossy_slices = super::lossy_slice_more_data(&ec_slice);
         let dc = decrypt_more(&key, &lossy_slices, &n);
-        for item in dc.clone().unwrap().into_iter() {
+        for item in dc.unwrap().into_iter() {
             let dc_str = String::from_utf8_lossy(item.unwrap().as_slice()).to_string();
             println!("{dc_str}");
         }
@@ -140,12 +140,12 @@ pub mod aes128 {
     };
     use getrandom;
     pub fn generate_key_aes128() -> core::result::Result<[u8; 16], getrandom::Error> {
-        let mut buf = [0u8; 16];
+        let mut buf = [0_u8; 16];
         getrandom::fill(&mut buf)?;
         Ok(buf)
     }
     pub fn generate_nonce() -> core::result::Result<[u8; 12], getrandom::Error> {
-        let mut buf = [0u8; 12];
+        let mut buf = [0_u8; 12];
         getrandom::fill(&mut buf)?;
         Ok(buf)
     }

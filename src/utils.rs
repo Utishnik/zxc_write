@@ -81,3 +81,10 @@ where
     }
     jobs_vec
 }
+
+#[repr(transparent)]
+#[derive(Debug, Clone, Copy)]
+pub struct SendablePtr(pub *const std::ffi::c_void);
+
+unsafe impl Send for SendablePtr {}
+unsafe impl Sync for SendablePtr {}

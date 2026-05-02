@@ -4,9 +4,11 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use threadpool::ThreadPool;
 use vec_string::*;
+use windows::core as win_core;
 use zxc_write::find_proccess::*;
 use zxc_write::mem::*;
 use zxc_write::privilege::enable_privilege_one;
+use zxc_write::utils::SendablePtr;
 use zxc_write::utils::*;
 
 fn wait_close() {
@@ -101,12 +103,95 @@ fn find_strings(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
     Ok(strs.unwrap())
 }
 
-fn get_childs_dyn(pid: u32) {
+fn get_base_addr_assci(find_res: &ExtractStrResult) -> Vec<*const c_void> {
+    find_res
+        .ascii
+        .iter()
+        .map(|x| x.base_addr as *const c_void)
+        .collect::<Vec<_>>()
+}
+
+fn get_base_addr_unicode(find_res: &ExtractStrResult) -> Vec<*const c_void> {
+    find_res
+        .unicode
+        .iter()
+        .map(|x| x.base_addr as *const c_void)
+        .collect::<Vec<_>>()
+}
+
+struct BaseAddrRes {
+    pub assci: Vec<*const c_void>,
+    pub unicode: Vec<*const c_void>,
+}
+
+unsafe fn get_base_addr_assci_send(find_res: &ExtractStrResult) -> Vec<SendablePtr> {
+    find_res
+        .ascii
+        .iter()
+        .map(|x| SendablePtr(x.base_addr as *const c_void))
+        .collect::<Vec<_>>()
+}
+
+unsafe fn get_base_addr_unicode_send(find_res: &ExtractStrResult) -> Vec<SendablePtr> {
+    find_res
+        .unicode
+        .iter()
+        .map(|x| SendablePtr(x.base_addr as *const c_void))
+        .collect::<Vec<_>>()
+}
+
+struct BaseAddrResSend {
+    pub assci: Vec<SendablePtr>,
+    pub unicode: Vec<SendablePtr>,
+}
+
+fn get_base_addr_all(find_res: &ExtractStrResult) -> BaseAddrRes {
+    let res_ascii = get_base_addr_assci(find_res);
+    let res_unicode = get_base_addr_unicode(find_res);
+    BaseAddrRes {
+        assci: res_ascii,
+        unicode: res_unicode,
+    }
+}
+
+unsafe fn get_base_addr_all_send(find_res: &ExtractStrResult) -> BaseAddrResSend {
+    let res_ascii = unsafe { get_base_addr_assci_send(find_res) };
+    let res_unicode = unsafe { get_base_addr_unicode_send(find_res) };
+    BaseAddrResSend {
+        assci: res_ascii,
+        unicode: res_unicode,
+    }
+}
+
+struct ScanStrRes {
+    pub finds_ascii: Vec<String>,
+    pub finds_unicode: Vec<String>,
+}
+
+struct ScanStrAllRes {
+    pub ssr: ScanStrRes,
+    pub finds_addr: BaseAddrRes,
+}
+
+struct ScanStrAllResSend {
+    pub ssr: ScanStrRes,
+    pub finds_addr: BaseAddrResSend,
+}
+
+struct ScanStrAllResSendCellMut<'lf>(&'lf mut ScanStrAllResSend);
+struct ScanStrAllResSendCell<'lf>(&'lf ScanStrAllResSend);
+
+unsafe fn get_childs_dyn_pat(
+    pid: u32,
+    pat: String,
+) -> Result<Vec<ScanStrAllResSend>, win_core::Error> {
     let childs = get_child_processes(pid);
     if let Err(e) = childs {
         println!("[ERROR] get_childs {:?}", e);
+        return Err(e);
     } else if let Ok(ok) = childs {
         let mut pids_vec: Vec<u32> = Vec::new();
+        let cnt_pids = pids_vec.len();
         pids_vec.push(pid);
         let names = ok
             .iter()
@@ -115,9 +200,9 @@ fn get_childs_dyn(pid: u32) {
                 format!("name exe {}\tpid: {}", x.1.clone(), x.0)
             })
             .collect::<Vec<String>>();
+        let mut ret: Vec<ScanStrAllResSend> = Vec::with_capacity(cnt_pids);
 
         println!("{}", names.vec_string(DEFAULT_FORMAT_RULE));
-        let cnt_pids = pids_vec.len();
         let pool = ThreadPool::new(cnt_pids);
         let an_atomic = Arc::new(AtomicUsize::new(0));
         let avb_p = std::thread::available_parallelism().unwrap_or(NonZero::new(8).unwrap());
@@ -125,6 +210,7 @@ fn get_childs_dyn(pid: u32) {
         let jobs_vec = jobs_disp(cnt_job, pids_vec);
         for jobs in jobs_vec.into_iter() {
             let an_atomic = an_atomic.clone();
+            let pat_clone = pat.clone();
             pool.execute(move || {
                 for item in jobs {
                     let find_res = extract_str_dyn_mem(item);
@@ -135,27 +221,41 @@ fn get_childs_dyn(pid: u32) {
                     }
                     let find_res = find_res.unwrap();
 
+                    #[allow(clippy::search_is_some)]
                     let finds_uc: Vec<String> = find_res
                         .unicode
                         .iter()
-                        .filter(|x| x.str.find("Багровели").is_some())
+                        .filter(|x| x.str.find(&pat_clone).is_some())
                         .map(|x| x.str.clone())
                         .collect();
+                    #[allow(clippy::search_is_some)]
                     let finds_ascii: Vec<String> = find_res
                         .ascii
                         .iter()
-                        .filter(|x| x.str.find("Багровели").is_some())
+                        .filter(|x| x.str.find(&pat_clone).is_some())
                         .map(|x| x.str.clone())
                         .collect();
 
-                    println!(
-                        "finds unicode vk: {}",
-                        finds_uc.vec_string(DEFAULT_FORMAT_RULE)
-                    );
-                    println!(
-                        "finds ascii vk: {}",
-                        finds_ascii.vec_string(DEFAULT_FORMAT_RULE)
-                    );
+                    let finds_addr = unsafe { get_base_addr_all_send(&find_res) };
+                    #[cfg(debug_assertions)]
+                    {
+                        println!(
+                            "finds unicode: {}",
+                            finds_uc.vec_string(DEFAULT_FORMAT_RULE)
+                        );
+                        println!(
+                            "finds ascii: {}",
+                            finds_ascii.vec_string(DEFAULT_FORMAT_RULE)
+                        );
+                    }
+
+                    ret.push(ScanStrAllResSend {
+                        ssr: ScanStrRes {
+                            finds_ascii,
+                            finds_unicode: finds_uc,
+                        },
+                        finds_addr,
+                    });
                     an_atomic.fetch_add(1, Ordering::Relaxed);
                 }
             });
@@ -171,6 +271,7 @@ fn get_childs_dyn(pid: u32) {
         while let load = an_atomic.load(Ordering::Relaxed)
             && load != cnt_pids
         {}
+        Ok(ret)
     } else {
         unreachable!();
     }
@@ -208,11 +309,14 @@ fn get_childs(pid: u32) {
                         return;
                     }
                     let find_res = find_res.unwrap();
-                    println!("Ascii:\t{}", find_res.ascii.vec_string(DEFAULT_FORMAT_RULE));
-                    println!(
-                        "Unicode:\t{}",
-                        find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
-                    );
+                    #[cfg(debug_assertions)]
+                    {
+                        println!("Ascii:\t{}", find_res.ascii.vec_string(DEFAULT_FORMAT_RULE));
+                        println!(
+                            "Unicode:\t{}",
+                            find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
+                        );
+                    }
                     an_atomic.fetch_add(1, Ordering::Relaxed);
                 }
             });
@@ -240,7 +344,7 @@ fn main() {
     }
     let pid = fnd_name.unwrap();
     println!("[DEBUG] pid: {}", pid);
-    get_childs_dyn(pid);
+    get_childs_dyn_pat(pid, "zxc".to_string());
     return; //
     let find_res = find_strings(pid);
     if find_res.is_err() {
