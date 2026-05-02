@@ -100,10 +100,15 @@ pub mod aes256 {
 
     #[test]
     fn t_more() {
-        let msg = b"Hello World";
+        let data = vec![
+            b"Hello World".as_slice(),
+            b"Hello World1".as_slice(),
+            b"Hello World3".as_slice(),
+            b"Hello World4".as_slice(),
+        ];
         let key = generate_key_aes256().unwrap();
         let n = generate_nonce().unwrap();
-        let ec = more_encrypt(&key, &[msg], &n);
+        let ec = more_encrypt(&key, data.as_slice(), &n);
         let ec_strs = Vec::from_iter(
             ec.clone()
                 .unwrap()
@@ -235,7 +240,7 @@ pub mod aes128 {
 
         let lossy_slices = super::lossy_slice_more_data(&ec_slice);
         let dc = decrypt_more(&key, &lossy_slices, &n);
-        for item in dc.clone().unwrap().into_iter() {
+        for item in dc.unwrap().into_iter() {
             let dc_str = String::from_utf8_lossy(item.unwrap().as_slice()).to_string();
             println!("{dc_str}");
         }
