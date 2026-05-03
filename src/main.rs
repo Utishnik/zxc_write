@@ -1,4 +1,5 @@
 use core::ffi::c_void;
+use std::cmp;
 use std::num::NonZero;
 use std::os::raw::c_double;
 use std::sync::Arc;
@@ -201,10 +202,9 @@ unsafe fn get_childs_dyn_pat(
     let childs = get_child_processes(pid);
     if let Err(e) = childs {
         println!("[ERROR] get_childs {:?}", e);
-        return Err(e);
+        Err(e)
     } else if let Ok(ok) = childs {
         let mut pids_vec: Vec<u32> = Vec::new();
-        let cnt_pids = pids_vec.len();
         pids_vec.push(pid);
         let names = ok
             .iter()
@@ -213,25 +213,28 @@ unsafe fn get_childs_dyn_pat(
                 format!("name exe {}\tpid: {}", x.1.clone(), x.0)
             })
             .collect::<Vec<String>>();
+        let cnt_pids = pids_vec.len();
         let mut ret: Vec<ScanStrAllResSend<SendableCvoidPtrMut>> = Vec::with_capacity(cnt_pids);
         let ret_raw_ptr = ret.as_mut_ptr();
         let ret_ptr = SendablePtrMut::<ScanStrAllResSend<SendableCvoidPtrMut>>(ret_raw_ptr);
 
         println!("{}", names.vec_string(DEFAULT_FORMAT_RULE));
+        println!("CNT Pids:  {}", cnt_pids);
         let pool = ThreadPool::new(cnt_pids);
         let an_atomic = Arc::new(AtomicUsize::new(0));
         let avb_p = std::thread::available_parallelism().unwrap_or(NonZero::new(8).unwrap());
-        let cnt_job = cnt_pids / avb_p;
+        let cnt_job = cmp::max(cnt_pids / avb_p, 1);
         let jobs_vec = jobs_disp(cnt_job, pids_vec);
-        let vec_cur: usize = 0;
+        let mut vec_cur: usize = 0;
         for jobs in jobs_vec.into_iter() {
+            let len_job = jobs.clone().len();
             let an_atomic = an_atomic.clone();
-            let vec_cur_copy = vec_cur.clone();
+            let vec_cur_copy = vec_cur;
             let pat_clone = pat.clone();
             let ret_ptr_clone = ret_ptr.clone();
             pool.execute(move || {
-                for item in jobs {
-                    let find_res = extract_str_dyn_mem(item);
+                for item in jobs.into_iter().enumerate() {
+                    let find_res = extract_str_dyn_mem(item.1);
                     if find_res.is_err() {
                         println!("find strings failed: None");
                         wait_close();
@@ -273,17 +276,12 @@ unsafe fn get_childs_dyn_pat(
                         //мы создаем указатель внутри/если делать снаружи и писать что то типа (*ret_ptr).0 то ошибка что *mut
                         //нельзя перемещать
                         //потому что блять типо поле мы захватаем а не весь тип а поле 0 как раз у нас нихуя не send это *mut
-                        let inner = ret_ptr.0;
+                        let inner = ret_ptr.0.add(vec_cur_copy + item.0);
                         (*inner).finds_addr = finds_addr;
-
-                        /*
-                        r.push(ScanStrAllResSend {
-                            ssr: ScanStrRes {
-                                finds_ascii,
-                                finds_unicode: finds_uc,
-                            },
-                            finds_addr,
-                        });*/
+                        (*inner).ssr = ScanStrRes {
+                            finds_ascii,
+                            finds_unicode: finds_uc,
+                        };
                     }
                     an_atomic.fetch_add(1, Ordering::Relaxed);
                 }
@@ -296,6 +294,7 @@ unsafe fn get_childs_dyn_pat(
                 find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
             );
             */
+            vec_cur += len_job;
         }
         while let load = an_atomic.load(Ordering::Relaxed)
             && load != cnt_pids
@@ -325,7 +324,8 @@ fn get_childs(pid: u32) {
         let pool = ThreadPool::new(cnt_pids);
         let an_atomic = Arc::new(AtomicUsize::new(0));
         let avb_p = std::thread::available_parallelism().unwrap_or(NonZero::new(8).unwrap());
-        let cnt_job = cnt_pids / avb_p;
+        let cnt_job = cmp::max(cnt_pids / avb_p, 1);
+
         let jobs_vec = jobs_disp(cnt_job, pids_vec);
         for jobs in jobs_vec.into_iter() {
             let an_atomic = an_atomic.clone();
@@ -373,7 +373,10 @@ fn main() {
     }
     let pid = fnd_name.unwrap();
     println!("[DEBUG] pid: {}", pid);
-    unsafe { get_childs_dyn_pat(pid, "zxc".to_string()) };
+    unsafe {
+        let _: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
+            get_childs_dyn_pat(pid, "zxc".to_string());
+    };
     return; //
     let find_res = find_strings(pid);
     if find_res.is_err() {
