@@ -1,4 +1,5 @@
 use core::marker::PhantomData;
+use std::ffi::c_void;
 use windows::Win32::Foundation::*;
 
 ///# Safety
@@ -83,13 +84,25 @@ where
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct SendablePtr<T:Clone>(pub *const T);
+pub struct SendablePtr<T /* :Clone*/>(pub *const T);
 
-unsafe impl<T:Clone> Send for SendablePtr<T> {}
-unsafe impl<T:Clone> Sync for SendablePtr<T> {}
+unsafe impl<T> Send for SendablePtr<T> {}
+unsafe impl<T> Sync for SendablePtr<T> {}
 
 #[derive(Debug, Clone, Copy)]
-pub struct SendablePtrMut<T:Clone>(pub *mut T);
+pub struct SendablePtrMut<T /* :Clone*/>(pub *mut T);
 
-unsafe impl<T:Clone> Send for SendablePtrMut<T> {}
-unsafe impl<T:Clone> Sync for SendablePtrMut<T> {}
+unsafe impl<T /* :Clone*/> Send for SendablePtrMut<T> {}
+unsafe impl<T /* :Clone*/> Sync for SendablePtrMut<T> {}
+
+#[derive(Debug, Clone, Copy)]
+pub struct SendableCvoidPtrMut(pub *mut c_void);
+
+#[derive(Debug, Clone, Copy)]
+pub struct SendableCvoidPtr(pub *const c_void);
+
+unsafe impl Send for SendableCvoidPtrMut {}
+unsafe impl Sync for SendableCvoidPtrMut {}
+
+unsafe impl Send for SendableCvoidPtr {}
+unsafe impl Sync for SendableCvoidPtr {}

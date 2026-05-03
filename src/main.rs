@@ -1,6 +1,6 @@
 use core::ffi::c_void;
 use std::num::NonZero;
-use std::ops::DerefMut;
+use std::os::raw::c_double;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use threadpool::ThreadPool;
@@ -126,7 +126,9 @@ struct BaseAddrRes {
     pub unicode: Vec<*const c_void>,
 }
 
-unsafe fn get_base_addr_assci_send<T>(find_res: &ExtractStrResult) -> Vec<SendablePtr<T>> {
+unsafe fn get_base_addr_assci_send<T>(find_res: &ExtractStrResult) -> Vec<SendablePtr<T>>
+//where T: Clone,
+{
     find_res
         .ascii
         .iter()
@@ -134,7 +136,9 @@ unsafe fn get_base_addr_assci_send<T>(find_res: &ExtractStrResult) -> Vec<Sendab
         .collect::<Vec<_>>()
 }
 
-unsafe fn get_base_addr_unicode_send<T>(find_res: &ExtractStrResult) -> Vec<SendablePtr<T>> {
+unsafe fn get_base_addr_unicode_send<T>(find_res: &ExtractStrResult) -> Vec<SendablePtr<T>>
+//where T: Clone,
+{
     find_res
         .unicode
         .iter()
@@ -143,7 +147,9 @@ unsafe fn get_base_addr_unicode_send<T>(find_res: &ExtractStrResult) -> Vec<Send
 }
 
 #[derive(Clone)]
-struct BaseAddrResSend<T> {
+struct BaseAddrResSend<T>
+//where T: Clone,
+{
     pub assci: Vec<SendablePtr<T>>,
     pub unicode: Vec<SendablePtr<T>>,
 }
@@ -157,7 +163,9 @@ fn get_base_addr_all(find_res: &ExtractStrResult) -> BaseAddrRes {
     }
 }
 
-unsafe fn get_base_addr_all_send<T>(find_res: &ExtractStrResult) -> BaseAddrResSend<T> {
+unsafe fn get_base_addr_all_send<T>(find_res: &ExtractStrResult) -> BaseAddrResSend<T>
+//where T: Clone,
+{
     let res_ascii = unsafe { get_base_addr_assci_send(find_res) };
     let res_unicode = unsafe { get_base_addr_unicode_send(find_res) };
     BaseAddrResSend::<T> {
@@ -179,17 +187,17 @@ struct ScanStrAllRes {
 }
 
 #[derive(Clone)]
-struct ScanStrAllResSend<T> {
+struct ScanStrAllResSend<T>
+//where T: Clone,
+{
     pub ssr: ScanStrRes,
     pub finds_addr: BaseAddrResSend<T>,
 }
 
-unsafe fn get_childs_dyn_pat<T>(
+unsafe fn get_childs_dyn_pat(
     pid: u32,
     pat: String,
-) -> Result<Vec<ScanStrAllResSend<T>>, win_core::Error> 
-where T: Send + 'static + Clone,
-{
+) -> Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> {
     let childs = get_child_processes(pid);
     if let Err(e) = childs {
         println!("[ERROR] get_childs {:?}", e);
@@ -205,9 +213,9 @@ where T: Send + 'static + Clone,
                 format!("name exe {}\tpid: {}", x.1.clone(), x.0)
             })
             .collect::<Vec<String>>();
-        let mut ret: Vec<ScanStrAllResSend<T>> = Vec::with_capacity(cnt_pids);
+        let mut ret: Vec<ScanStrAllResSend<SendableCvoidPtrMut>> = Vec::with_capacity(cnt_pids);
         let ret_raw_ptr = ret.as_mut_ptr();
-        let ret_ptr = SendablePtrMut::<ScanStrAllResSend<T>>(ret_raw_ptr);
+        let ret_ptr = SendablePtrMut::<ScanStrAllResSend<SendableCvoidPtrMut>>(ret_raw_ptr);
 
         println!("{}", names.vec_string(DEFAULT_FORMAT_RULE));
         let pool = ThreadPool::new(cnt_pids);
@@ -215,12 +223,12 @@ where T: Send + 'static + Clone,
         let avb_p = std::thread::available_parallelism().unwrap_or(NonZero::new(8).unwrap());
         let cnt_job = cnt_pids / avb_p;
         let jobs_vec = jobs_disp(cnt_job, pids_vec);
-        let vec_cur: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
+        let vec_cur: usize = 0;
         for jobs in jobs_vec.into_iter() {
             let an_atomic = an_atomic.clone();
-            let vec_cur = vec_cur.clone();
+            let vec_cur_copy = vec_cur.clone();
             let pat_clone = pat.clone();
-            let ret_ptr = ret_ptr.clone();
+            let ret_ptr_clone = ret_ptr.clone();
             pool.execute(move || {
                 for item in jobs {
                     let find_res = extract_str_dyn_mem(item);
@@ -246,7 +254,8 @@ where T: Send + 'static + Clone,
                         .map(|x| x.str.clone())
                         .collect();
 
-                    let finds_addr = unsafe { get_base_addr_all_send::<T>(&find_res) };
+                    let finds_addr =
+                        unsafe { get_base_addr_all_send::<SendableCvoidPtrMut>(&find_res) };
                     #[cfg(debug_assertions)]
                     {
                         println!(
@@ -258,8 +267,8 @@ where T: Send + 'static + Clone,
                             finds_ascii.vec_string(DEFAULT_FORMAT_RULE)
                         );
                     }
-                    unsafe{
-                        let ret_ptr = ret_ptr;
+                    unsafe {
+                        let ret_ptr = ret_ptr_clone.clone();
                         //раст не дает перемещать ptr
                         //мы создаем указатель внутри/если делать снаружи и писать что то типа (*ret_ptr).0 то ошибка что *mut
                         //нельзя перемещать
@@ -267,7 +276,7 @@ where T: Send + 'static + Clone,
                         let inner = ret_ptr.0;
                         (*inner).finds_addr = finds_addr;
 
-                        /*  
+                        /*
                         r.push(ScanStrAllResSend {
                             ssr: ScanStrRes {
                                 finds_ascii,
@@ -364,7 +373,7 @@ fn main() {
     }
     let pid = fnd_name.unwrap();
     println!("[DEBUG] pid: {}", pid);
-    get_childs_dyn_pat(pid, "zxc".to_string());
+    unsafe { get_childs_dyn_pat(pid, "zxc".to_string()) };
     return; //
     let find_res = find_strings(pid);
     if find_res.is_err() {
