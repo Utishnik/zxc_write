@@ -195,7 +195,7 @@ struct ScanStrAllResSend<T>
     pub finds_addr: BaseAddrResSend<T>,
 }
 
-unsafe fn get_childs_dyn_pat(
+unsafe fn get_childs_dyn_pat_cvoid(
     pid: u32,
     pat: String,
 ) -> Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> {
@@ -305,10 +305,13 @@ unsafe fn get_childs_dyn_pat(
     }
 }
 
-fn get_childs(pid: u32) {
+unsafe fn get_childs_cvoid(
+    pid: u32,
+) -> Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> {
     let childs = get_child_processes(pid);
     if let Err(e) = childs {
         println!("[ERROR] get_childs {:?}", e);
+        Err(e)
     } else if let Ok(ok) = childs {
         let mut pids_vec: Vec<u32> = Vec::new();
         pids_vec.push(pid);
@@ -325,19 +328,30 @@ fn get_childs(pid: u32) {
         let an_atomic = Arc::new(AtomicUsize::new(0));
         let avb_p = std::thread::available_parallelism().unwrap_or(NonZero::new(8).unwrap());
         let cnt_job = cmp::max(cnt_pids / avb_p, 1);
+        let mut vec_cur: usize = 0;
+        let mut ret: Vec<ScanStrAllResSend<SendableCvoidPtrMut>> = Vec::with_capacity(cnt_pids);
+        let ret_raw_ptr = ret.as_mut_ptr();
+        let ret_ptr = SendablePtrMut::<ScanStrAllResSend<SendableCvoidPtrMut>>(ret_raw_ptr);
 
         let jobs_vec = jobs_disp(cnt_job, pids_vec);
         for jobs in jobs_vec.into_iter() {
+            let len_job = jobs.clone().len();
+            let vec_cur_copy = vec_cur;
             let an_atomic = an_atomic.clone();
+            let ret_ptr_clone = ret_ptr.clone();
             pool.execute(move || {
-                for item in jobs {
-                    let find_res = find_strings(item);
+                for item in jobs.into_iter().enumerate() {
+                    let find_res = find_strings(item.1);
                     if find_res.is_err() {
                         println!("find strings failed: None");
                         wait_close();
                         return;
                     }
                     let find_res = find_res.unwrap();
+                    let finds_addr =
+                        unsafe { get_base_addr_all_send::<SendableCvoidPtrMut>(&find_res) };
+                    let finds_ascii = find_res.ascii.iter().map(|x| x.str.clone()).collect();
+                    let finds_unicode = find_res.unicode.iter().map(|x| x.str.clone()).collect();
                     #[cfg(debug_assertions)]
                     {
                         println!("Ascii:\t{}", find_res.ascii.vec_string(DEFAULT_FORMAT_RULE));
@@ -346,13 +360,24 @@ fn get_childs(pid: u32) {
                             find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
                         );
                     }
+                    unsafe {
+                        let ret_ptr = ret_ptr_clone.clone();
+                        let inner = ret_ptr.0.add(vec_cur_copy + item.0);
+                        (*inner).finds_addr = finds_addr;
+                        (*inner).ssr = ScanStrRes {
+                            finds_ascii,
+                            finds_unicode,
+                        };
+                    }
                     an_atomic.fetch_add(1, Ordering::Relaxed);
                 }
             });
+            vec_cur += len_job;
         }
         while let load = an_atomic.load(Ordering::Relaxed)
             && load != cnt_pids
         {}
+        Ok(ret)
     } else {
         unreachable!();
     }
@@ -374,9 +399,14 @@ fn main() {
     let pid = fnd_name.unwrap();
     println!("[DEBUG] pid: {}", pid);
     unsafe {
-        let _: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
-            get_childs_dyn_pat(pid, "zxc".to_string());
+        //let _: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
+        //get_childs_dyn_pat_cvoid(pid, "zxc".to_string());
     };
+    unsafe {
+        let _: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
+            get_childs_cvoid(pid);
+    }
+
     return; //
     let find_res = find_strings(pid);
     if find_res.is_err() {
