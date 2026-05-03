@@ -399,14 +399,44 @@ fn main() {
     let pid = fnd_name.unwrap();
     println!("[DEBUG] pid: {}", pid);
     unsafe {
-        //let _: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
-        //get_childs_dyn_pat_cvoid(pid, "zxc".to_string());
+        let res_dyn_pat: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
+            get_childs_dyn_pat_cvoid(pid, "zxc".to_string());
+        if let Err(e) = res_dyn_pat {
+            println!("[ERROR] {:?}", e);
+            wait_close();
+            return;
+        }
+        let res_dyn_pat = res_dyn_pat.unwrap();
+        let addr_only_assci: Vec<_> = res_dyn_pat
+            .iter()
+            .flat_map(|x| x.finds_addr.assci.clone())
+            .collect();
+        let addr_only_unicode: Vec<_> = res_dyn_pat
+            .iter()
+            .flat_map(|x| x.finds_addr.unicode.clone())
+            .collect();
+        //#[cfg(debug_assertions)]
+        {
+            let fmt_assci_addr: Vec<_> = addr_only_assci
+                .iter()
+                .map(|x| format!("{:p}", x.0))
+                .collect();
+            let fmt_unicode_addr: Vec<_> = addr_only_unicode
+                .iter()
+                .map(|x| format!("{:p}", x.0))
+                .collect();
+            let str_assci_addr = fmt_assci_addr.vec_string(DEFAULT_FORMAT_RULE);
+            let str_unicode_addr = fmt_unicode_addr.vec_string(DEFAULT_FORMAT_RULE);
+            println!("ASSCI ADDR:  {}", str_assci_addr);
+            println!("UNICODE ADDR:  {}", str_unicode_addr);
+        }
     };
     unsafe {
-        let _: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
-            get_childs_cvoid(pid);
+        //let _: Result<Vec<ScanStrAllResSend::<SendableCvoidPtrMut>>, win_core::Error> =
+        //get_childs_cvoid(pid);
     }
 
+    wait_close();
     return; //
     let find_res = find_strings(pid);
     if find_res.is_err() {
