@@ -1,5 +1,6 @@
+//https://github.com/FreerGit/ring-log/blob/main/src/lib.rs#L29
+
 use crossfire::mpsc;
-use getrandom::fill;
 use std::cell::Cell;
 use std::fs::File;
 use std::io::Write;
@@ -30,6 +31,11 @@ pub struct Logger {
 pub struct LoggerFileOptions {
     pub path: &'static str,
     pub append_mode: bool,
+}
+
+const unsafe fn cell_borrow<T>(cell: &Cell<T>) -> &T {
+    let ptr = cell.as_ptr() as *const T;
+    unsafe { ptr.as_ref_unchecked() }
 }
 
 impl Logger {
@@ -104,5 +110,55 @@ impl Logger {
             .append(op.append_mode)
             .create(true)
             .open(op.path)
+    }
+
+    #[track_caller]
+    fn log<F, T>(&self, level: &'static str, f: F)
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: AsRef<str>,
+    {
+        let tt = self.with_time;
+        let location = std::panic::Location::caller();
+        let entry = LogEntry {
+            closure: Box::new(move || {
+                let file_line = format!("{}:{}", location.file(), location.line());
+                let time = match tt {
+                    true => format!(
+                        "{}",
+                        chrono::offset::Local::now().format("%Y-%m-%d %H:%M:%S ")
+                    ),
+                    false => String::new(),
+                };
+                let message = f();
+                format!("{}{} {} {}", time, file_line, level, message.as_ref())
+            }),
+            log_to: self.log_to.clone(),
+        };
+
+        unsafe {
+            match cell_borrow(&self.sx).send(entry) {
+                Ok(_) => (),
+                Err(_) => panic!("Logger thread died :("),
+            }
+        }
+    }
+    pub const fn with_time(mut self, time: bool) -> Self {
+        self.with_time = time;
+        self
+    }
+
+    /// Waits until all messages are logged
+    pub fn shutdown(&self) {
+        self.shutdown.store(true, Ordering::Release);
+        unsafe {
+            while !cell_borrow(&self.sx).is_disconnected() {
+                std::thread::yield_now();
+            }
+        }
+
+        if let Some(ref file) = self.file {
+            file.sync_all().unwrap();
+        }
     }
 }
