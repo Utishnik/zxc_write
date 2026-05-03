@@ -323,7 +323,7 @@ pub fn scan_process_processors<F, T>(
     stard_addr: Option<*const c_void>,
 ) -> Result<ExtractResult<T>, ScanProcessStringsError> {
     //PROCESS_QUERY_INFORMATION
-    println!("[DEBUG] PID SCAN:\t{dwprocessid}");
+    //println!("[DEBUG] PID SCAN:\t{dwprocessid}"); TODO ! LOG
     let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
 
     let h_process = open_read_process(dwprocessid);
@@ -453,7 +453,7 @@ where
     F: FnMut(*const c_void, usize, *const c_void) -> Vec<T>,
 {
     //PROCESS_QUERY_INFORMATION
-    println!("[DEBUG] PID SCAN:\t{dwprocessid}");
+    //println!("[DEBUG] PID SCAN:\t{dwprocessid}"); TODO LOG!
     let h_process = open_read_process(dwprocessid);
     match h_process {
         Ok(_) => {
@@ -648,7 +648,7 @@ pub fn scan_process_processors_lossy_gen<T, F>(
 where
     F: FnMut(*const c_void, usize, *const c_void) -> Vec<T>,
 {
-    println!("[DEBUG] PID SCAN:\t{dwprocessid}");
+    //println!("[DEBUG] PID SCAN:\t{dwprocessid}"); TODO LOG
 
     let h_process = open_read_process(dwprocessid).map_err(ScanProcessStringsError::OpenProcess)?;
     let _guard = HandleGuard(h_process);

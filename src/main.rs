@@ -14,6 +14,7 @@ use zxc_write::utils::SendablePtr;
 use zxc_write::utils::*;
 
 fn wait_close() {
+    println!("CLOSE...");
     let mut buffer: String = String::new();
     let _ = std::io::stdin().read_line(&mut buffer);
 }
@@ -435,9 +436,7 @@ fn main() {
         //let _: Result<Vec<ScanStrAllResSend::<SendableCvoidPtrMut>>, win_core::Error> =
         //get_childs_cvoid(pid);
     }
-
     wait_close();
-    return; //
     let find_res = find_strings(pid);
     if find_res.is_err() {
         println!("find strings failed: None");
