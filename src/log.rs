@@ -2,8 +2,10 @@
 
 use super::ui_utils::*;
 use crossfire::mpsc;
+use std::any::Any;
 use std::cell::Cell;
 use std::fs::File;
+use std::io::Error;
 use std::io::Write;
 use std::sync::Arc;
 use std::sync::LazyLock;
@@ -46,7 +48,7 @@ const unsafe fn cell_borrow<T>(cell: &Cell<T>) -> &T {
 }
 
 impl Logger {
-    pub fn builder(log_op: Option<LoggerFileOptions>) -> Result<Self, std::io::Error> {
+    fn builder(log_op: Option<LoggerFileOptions>) -> Result<Self, std::io::Error> {
         let (sx, rx) = mpsc::bounded_blocking::<LogEntry>(CHAN_SIZE);
 
         let shutdown_flag = Arc::new(AtomicBool::new(false));
@@ -161,7 +163,7 @@ impl Logger {
     }
 
     /// Waits until all messages are logged
-    pub fn shutdown(&self) {
+    fn shutdown(&self) -> Result<(), std::io::Error> {
         self.shutdown.store(true, Ordering::Release);
         unsafe {
             while !cell_borrow(&self.sx).is_disconnected() {
@@ -170,8 +172,9 @@ impl Logger {
         }
 
         if let Some(ref file) = self.file {
-            file.sync_all().unwrap();
+            file.sync_all()?
         }
+        Ok(())
     }
     #[track_caller]
     pub fn info<F, T>(&self, f: F)
@@ -210,5 +213,23 @@ impl Logger {
     {
         let warn = LazyLock::force(&WARN_MSG).clone();
         self.log(warn, f);
+    }
+}
+
+pub enum LoggerRes<T> {
+    Panic(Box<dyn Any + Send>),
+    Ok(T),
+}
+
+//public no panic
+impl Logger {
+    pub fn safe_builder(
+        log_op: Option<LoggerFileOptions>,
+    ) -> LoggerRes<Result<Logger, std::io::Error>> {
+        let result = std::panic::catch_unwind(|| Self::builder(log_op));
+        match result {
+            Ok(ok) => LoggerRes::Ok(ok),
+            Err(e) => LoggerRes::Panic(e),
+        }
     }
 }
