@@ -1,13 +1,20 @@
 //https://github.com/FreerGit/ring-log/blob/main/src/lib.rs#L29
 
+use super::ui_utils::*;
 use crossfire::mpsc;
 use std::cell::Cell;
 use std::fs::File;
 use std::io::Write;
 use std::sync::Arc;
+use std::sync::LazyLock;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 const CHAN_SIZE: usize = 1024;
+
+static INFO_MSG: LazyLock<String> = LazyLock::new(|| write_green("[INFO]"));
+static ERR_MSG: LazyLock<String> = LazyLock::new(|| write_red("[ERROR]"));
+static DBG_MSG: LazyLock<String> = LazyLock::new(|| write_cyan("[DEBUG]"));
+static WARN_MSG: LazyLock<String> = LazyLock::new(|| write_yellow("[WARN]"));
 
 #[derive(Clone)]
 pub enum LogTo {
@@ -113,7 +120,7 @@ impl Logger {
     }
 
     #[track_caller]
-    fn log<F, T>(&self, level: &'static str, f: F)
+    fn log<F, T>(&self, level: String, f: F)
     where
         F: FnOnce() -> T + Send + 'static,
         T: AsRef<str>,
@@ -122,7 +129,12 @@ impl Logger {
         let location = std::panic::Location::caller();
         let entry = LogEntry {
             closure: Box::new(move || {
-                let file_line = format!("{}:{}", location.file(), location.line());
+                let file_line = format!(
+                    "file: {} line: {} column: {}",
+                    location.file(),
+                    location.line(),
+                    location.column()
+                );
                 let time = match tt {
                     true => format!(
                         "{}",
@@ -160,5 +172,43 @@ impl Logger {
         if let Some(ref file) = self.file {
             file.sync_all().unwrap();
         }
+    }
+    #[track_caller]
+    pub fn info<F, T>(&self, f: F)
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: AsRef<str>,
+    {
+        let info = LazyLock::force(&INFO_MSG).clone(); //бля честно залупа вышла но похуя
+        self.log(info, f);
+    }
+
+    #[track_caller]
+    pub fn error<F, T>(&self, f: F)
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: AsRef<str>,
+    {
+        let err = LazyLock::force(&ERR_MSG).clone();
+        self.log(err, f);
+    }
+    #[track_caller]
+    pub fn debug<F, T>(&self, f: F)
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: AsRef<str>,
+    {
+        let dbg = LazyLock::force(&DBG_MSG).clone();
+        self.log(dbg, f);
+    }
+
+    #[track_caller]
+    pub fn warning<F, T>(&self, f: F)
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: AsRef<str>,
+    {
+        let warn = LazyLock::force(&WARN_MSG).clone();
+        self.log(warn, f);
     }
 }

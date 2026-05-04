@@ -51,4 +51,5 @@ pub mod log;
 pub mod mem;
 pub mod modules;
 pub mod privilege;
+pub mod ui_utils;
 pub mod utils;
