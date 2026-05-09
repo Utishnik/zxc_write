@@ -22,6 +22,7 @@ static WARN_MSG: LazyLock<String> = LazyLock::new(|| write_yellow("[WARN]"));
 pub enum LogTo {
     Ephemeral,
     File,
+    InRam,
 }
 struct LogEntry {
     closure: Box<dyn FnOnce() -> String + Send>,
@@ -48,7 +49,10 @@ const unsafe fn cell_borrow<T>(cell: &Cell<T>) -> &T {
 }
 
 impl Logger {
-    fn builder(log_op: Option<LoggerFileOptions>) -> Result<Self, std::io::Error> {
+    fn builder(
+        log_op: Option<LoggerFileOptions>,
+        log_in_ram: Option<Vec<String>>,
+    ) -> Result<Self, std::io::Error> {
         let (sx, rx) = mpsc::bounded_blocking::<LogEntry>(CHAN_SIZE);
 
         let shutdown_flag = Arc::new(AtomicBool::new(false));
@@ -58,7 +62,7 @@ impl Logger {
             let checked_file: Option<File> = if let Some(ref x) = file
                 && x.is_err()
             {
-                println!("[ERROR FILE]");
+                println!("[ERROR FILE]"); //TODO
                 return;
             } else if let Some(x) = file
                 && x.is_ok()
@@ -68,12 +72,16 @@ impl Logger {
                 None
             };
             let mut file = checked_file;
+            let mut buf_ram: Vec<String> = Vec::new();
+            let in_ram = log_in_ram.is_some();
 
             loop {
                 match rx.recv() {
-                    Err(_) => {
+                    Err(e) => {
                         if shutdown_flag_clone.load(Ordering::Acquire) {
                             break;
+                        } else {
+                            println!("Chanell debug err: {:?}", e);
                         }
                     }
                     Ok(entry) => {
@@ -89,6 +97,11 @@ impl Logger {
                                 }
                             }
                             LogTo::Ephemeral => println!("{}", message),
+                            LogTo::InRam => {
+                                if in_ram {
+                                    buf_ram.push(message);
+                                }
+                            }
                         };
                     }
                 }
@@ -225,8 +238,9 @@ pub enum LoggerRes<T> {
 impl Logger {
     pub fn safe_builder(
         log_op: Option<LoggerFileOptions>,
-    ) -> LoggerRes<Result<Logger, std::io::Error>> {
-        let result = std::panic::catch_unwind(|| Self::builder(log_op));
+        log_in_ram: Option<Vec<String>>,
+    ) -> LoggerRes<Result<Self, std::io::Error>> {
+        let result = std::panic::catch_unwind(|| Self::builder(log_op, log_in_ram));
         match result {
             Ok(ok) => LoggerRes::Ok(ok),
             Err(e) => LoggerRes::Panic(e),
