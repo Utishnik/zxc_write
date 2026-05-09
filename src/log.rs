@@ -7,9 +7,9 @@ use std::cell::Cell;
 use std::fs::File;
 use std::io::Error;
 use std::io::Write;
-use std::sync::Arc;
-use std::sync::LazyLock;
+use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, LazyLock, RwLock};
 
 const CHAN_SIZE: usize = 1024;
 
@@ -35,6 +35,7 @@ pub struct Logger {
     log_to: LogTo,
     with_time: bool,
     shutdown: Arc<AtomicBool>,
+    mem_ptr: Arc<RwLock<Vec<String>>>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -57,6 +58,9 @@ impl Logger {
 
         let shutdown_flag = Arc::new(AtomicBool::new(false));
         let shutdown_flag_clone = shutdown_flag.clone();
+        let buf_ram: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new())); //rwlock
+        let thread_clone = buf_ram.clone();
+        let in_ram = log_in_ram.is_some();
         std::thread::spawn(move || {
             let file = log_op.map(Self::open_log_file);
             let checked_file: Option<File> = if let Some(ref x) = file
@@ -72,16 +76,13 @@ impl Logger {
                 None
             };
             let mut file = checked_file;
-            let mut buf_ram: Vec<String> = Vec::new();
-            let in_ram = log_in_ram.is_some();
-
             loop {
                 match rx.recv() {
                     Err(e) => {
                         if shutdown_flag_clone.load(Ordering::Acquire) {
                             break;
                         } else {
-                            println!("Chanell debug err: {:?}", e);
+                            println!("[ERROR] channel debug err: {:?}", e);
                         }
                     }
                     Ok(entry) => {
@@ -99,13 +100,22 @@ impl Logger {
                             LogTo::Ephemeral => println!("{}", message),
                             LogTo::InRam => {
                                 if in_ram {
-                                    buf_ram.push(message);
+                                    let guard = &mut thread_clone.write();
+                                    match guard {
+                                        Ok(guard) => {
+                                            guard.push(message);
+                                        }
+                                        Err(e) => {
+                                            println!("типо отравлен: {:?}", e);
+                                        }
+                                    }
                                 }
                             }
                         };
                     }
                 }
             }
+            drop(thread_clone);
         });
 
         let file = if let Some(x) = log_op {
@@ -117,13 +127,14 @@ impl Logger {
         } else {
             None
         };
-
+        let mem_ptr = buf_ram;
         Ok(Self {
             sx: Cell::new(sx),
             file,
             log_to: log_op.map_or(LogTo::Ephemeral, |_| LogTo::File),
             with_time: false,
             shutdown: shutdown_flag,
+            mem_ptr,
         })
     }
     fn open_log_file(op: LoggerFileOptions) -> Result<File, std::io::Error> {
