@@ -1,13 +1,15 @@
 use core::ffi::c_void;
 use std::cmp;
 use std::num::NonZero;
+use std::ops::Deref;
 use std::os::raw::c_double;
-use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex, MutexGuard};
 use threadpool::ThreadPool;
 use vec_string::*;
 use windows::core as win_core;
 use zxc_write::find_proccess::*;
+use zxc_write::log::Logger;
 use zxc_write::mem::*;
 use zxc_write::privilege::enable_privilege_one;
 use zxc_write::utils::SendablePtr;
@@ -19,7 +21,7 @@ fn wait_close() {
     let _ = std::io::stdin().read_line(&mut buffer);
 }
 
-fn extract_str(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
+fn extract_str(dwprocessid: u32, log: Option<Logger>) -> Result<ExtractStrResult, ()> {
     let extract_ascii_strings_fn =
         |buf, size, base_ptr| unsafe { extract_ascii_strings(buf, size, base_ptr, 10, None) };
     let extract_unicode_strings_fn =
@@ -34,6 +36,7 @@ fn extract_str(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
             16,              // start_cap
             101704332083002, // начать с NULL
             None,
+            log,
         )
     };
 
@@ -61,7 +64,7 @@ fn extract_str(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
     }
 }
 
-fn extract_str_dyn_mem(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
+fn extract_str_dyn_mem(dwprocessid: u32, log: Option<&Logger>) -> Result<ExtractStrResult, ()> {
     let extract_ascii_strings_fn =
         |buf, size, base_ptr| unsafe { extract_ascii_strings(buf, size, base_ptr, 5, None) };
     let extract_unicode_strings_fn =
@@ -73,7 +76,7 @@ fn extract_str_dyn_mem(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
     }
     let scan_res = scan_res.unwrap();
     let mut processors = [extract_ascii_strings_fn, extract_unicode_strings_fn];
-    let result = scan_process_processors_mbi(dwprocessid, &mut processors, 50000, scan_res);
+    let result = scan_process_processors_mbi(dwprocessid, &mut processors, 50000, scan_res, log);
     if let Ok(extract_result) = result {
         let all_ascii: Vec<_> = extract_result
             .iter()
@@ -97,8 +100,8 @@ fn extract_str_dyn_mem(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
     }
 }
 
-fn find_strings(dwprocessid: u32) -> Result<ExtractStrResult, ()> {
-    let strs = extract_str(dwprocessid);
+fn find_strings(dwprocessid: u32, log: Option<Logger>) -> Result<ExtractStrResult, ()> {
+    let strs = extract_str(dwprocessid, log);
     if let Err(e) = strs {
         println!("[DEBUG] strs Err: {:?}", e);
         return Err(());
@@ -199,6 +202,7 @@ struct ScanStrAllResSend<T>
 unsafe fn get_childs_dyn_pat_cvoid(
     pid: u32,
     pat: String,
+    log: Arc<Option<Mutex<Logger>>>,
 ) -> Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> {
     let childs = get_child_processes(pid);
     if let Err(e) = childs {
@@ -233,9 +237,42 @@ unsafe fn get_childs_dyn_pat_cvoid(
             let vec_cur_copy = vec_cur;
             let pat_clone = pat.clone();
             let ret_ptr_clone = ret_ptr.clone();
+            let log_clone = log.clone();
             pool.execute(move || {
+                /*
+                let inner = log_clone.deref();
+                let log_arg: Option<&Logger> =
+                if let Some(x) = inner{
+                    let guard = x.lock();
+                    match guard {
+                        Ok(ok) => {
+                            let inner = ok.deref();
+                            Some(inner)
+                        },
+                        Err(_) => None,
+                    }
+                }
+                else{
+                    None
+                };
+                */
+                let inner = log_clone.deref().as_ref();
+                let global_guard: MutexGuard<'_, Logger>;
+                let unwrap: Option<&Logger> = match inner {
+                    Some(x) => {
+                        let guard = x.lock();
+                        match guard {
+                            Ok(ok) => {
+                                global_guard = ok;
+                                Some(global_guard.deref())
+                            }
+                            Err(_) => None,
+                        }
+                    }
+                    None => None,
+                };
                 for item in jobs.into_iter().enumerate() {
-                    let find_res = extract_str_dyn_mem(item.1);
+                    let find_res = extract_str_dyn_mem(item.1, unwrap);
                     if find_res.is_err() {
                         println!("find strings failed: None");
                         wait_close();
@@ -308,6 +345,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
 
 unsafe fn get_childs_cvoid(
     pid: u32,
+    log: Arc<Option<Mutex<Logger>>>,
 ) -> Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> {
     let childs = get_child_processes(pid);
     if let Err(e) = childs {

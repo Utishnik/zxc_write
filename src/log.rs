@@ -61,7 +61,6 @@ impl Logger {
         let buf_ram: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new())); //rwlock
         let thread_clone = buf_ram.clone();
         let in_ram = log_in_ram.is_some();
-        let clone_buf = buf_ram.clone();
         std::thread::spawn(move || {
             let file = log_op.map(Self::open_log_file);
             let checked_file: Option<File> = if let Some(ref x) = file

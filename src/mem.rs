@@ -1,5 +1,6 @@
 use crate::log::*;
 use crate::utils::SyncLogger;
+use std::fmt::format;
 use std::ops::{Deref, DerefMut};
 use std::sync::{Arc, LazyLock, Mutex};
 use std::{ffi::c_void, ptr};
@@ -58,7 +59,7 @@ fn is_ascii_utf16le(c1: u8, c2: u8) -> bool {
 }
 
 #[inline(always)]
-pub fn is_printable_utf16le(c1: u8, c2: u8) -> bool {
+pub const fn is_printable_utf16le(c1: u8, c2: u8) -> bool {
     matches!(u16::from_le_bytes([c1, c2]),
         0x0020..=0x007E |      // Basic Latin
         0x00A1..=0x024F |      // Latin Extended
@@ -329,9 +330,13 @@ pub fn scan_process_processors<F, T>(
     processors: &[fn(*mut c_void, usize, *const c_void) -> Vec<T>],
     start_cap: usize,
     stard_addr: Option<*const c_void>,
+    log: Option<Logger>,
 ) -> Result<ExtractResult<T>, ScanProcessStringsError> {
     //PROCESS_QUERY_INFORMATION
     //println!("[DEBUG] PID SCAN:\t{dwprocessid}"); TODO ! LOG
+    if let Some(x) = log {
+        x.info(move || format!("[DEBUG] PID SCAN:\t{dwprocessid}"));
+    }
     let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
 
     let h_process = open_read_process(dwprocessid);
@@ -456,12 +461,16 @@ pub fn scan_process_processors_mbi<F, T>(
     processors: &mut [F],
     start_cap: usize,
     rpmr: Vec<ReadProcessMemoryResult>, //ахуеное название
+    log: Option<&Logger>,
 ) -> Result<ExtractResult<T>, ScanProcessStringsError>
 where
     F: FnMut(*const c_void, usize, *const c_void) -> Vec<T>,
 {
     //PROCESS_QUERY_INFORMATION
     //println!("[DEBUG] PID SCAN:\t{dwprocessid}"); TODO LOG!
+    if let Some(x) = log {
+        x.info(move || format!("[DEBUG] PID SCAN:\t{dwprocessid}"));
+    }
     let h_process = open_read_process(dwprocessid);
     match h_process {
         Ok(_) => {
@@ -652,11 +661,15 @@ pub fn scan_process_processors_lossy_gen<T, F>(
     start_cap: usize,
     max_addr_offset: usize,
     start_addr: Option<*const c_void>,
+    log: Option<Logger>,
 ) -> Result<ExtractResult<T>, ScanProcessStringsError>
 where
     F: FnMut(*const c_void, usize, *const c_void) -> Vec<T>,
 {
     //println!("[DEBUG] PID SCAN:\t{dwprocessid}"); TODO LOG
+    if let Some(x) = log {
+        x.info(move || format!("[DEBUG] PID SCAN:\t{dwprocessid}"));
+    }
 
     let h_process = open_read_process(dwprocessid).map_err(ScanProcessStringsError::OpenProcess)?;
     let _guard = HandleGuard(h_process);
