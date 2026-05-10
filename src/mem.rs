@@ -1,4 +1,12 @@
+use crate::log::*;
+use crate::utils::SyncLogger;
+use std::ops::{Deref, DerefMut};
+use std::sync::{Arc, LazyLock, Mutex};
 use std::{ffi::c_void, ptr};
+
+static LOG_START_CAP: usize = 256;
+static LOG_VEC: LazyLock<Arc<Mutex<Vec<String>>>> =
+    LazyLock::new(|| Arc::new(Mutex::new(Vec::with_capacity(LOG_START_CAP))));
 
 use crate::error_hand::*;
 use windows::{

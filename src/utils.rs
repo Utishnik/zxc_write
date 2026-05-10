@@ -1,3 +1,4 @@
+use crate::log::*;
 use core::marker::PhantomData;
 use std::ffi::c_void;
 use windows::Win32::Foundation::*;
@@ -106,3 +107,7 @@ unsafe impl Sync for SendableCvoidPtrMut {}
 
 unsafe impl Send for SendableCvoidPtr {}
 unsafe impl Sync for SendableCvoidPtr {}
+
+pub struct SyncLogger(pub Logger);
+
+unsafe impl Sync for SyncLogger {}

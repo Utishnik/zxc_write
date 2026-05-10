@@ -9,7 +9,7 @@ use std::io::Error;
 use std::io::Write;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::{Arc, LazyLock, RwLock};
+use std::sync::{Arc, LazyLock, Mutex, RwLock};
 
 const CHAN_SIZE: usize = 1024;
 
@@ -52,7 +52,7 @@ const unsafe fn cell_borrow<T>(cell: &Cell<T>) -> &T {
 impl Logger {
     fn builder(
         log_op: Option<LoggerFileOptions>,
-        log_in_ram: Option<Vec<String>>,
+        log_in_ram: Option<Arc<Mutex<Vec<String>>>>,
     ) -> Result<Self, std::io::Error> {
         let (sx, rx) = mpsc::bounded_blocking::<LogEntry>(CHAN_SIZE);
 
@@ -61,6 +61,7 @@ impl Logger {
         let buf_ram: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new())); //rwlock
         let thread_clone = buf_ram.clone();
         let in_ram = log_in_ram.is_some();
+        let clone_buf = buf_ram.clone();
         std::thread::spawn(move || {
             let file = log_op.map(Self::open_log_file);
             let checked_file: Option<File> = if let Some(ref x) = file
@@ -106,7 +107,7 @@ impl Logger {
                                             guard.push(message);
                                         }
                                         Err(e) => {
-                                            println!("типо отравлен: {:?}", e);
+                                            println!("Logger отравлен: {:?}", e);
                                         }
                                     }
                                 }
@@ -115,6 +116,35 @@ impl Logger {
                     }
                 }
             }
+            let r_guard = thread_clone.read();
+            match r_guard {
+                Ok(ref r_guard) => {
+                    if in_ram {
+                        match log_in_ram {
+                            Some(x) => {
+                                let guard = x.lock();
+                                match guard {
+                                    Ok(mut guard) => {
+                                        for item in r_guard.iter() {
+                                            guard.push(item.clone());
+                                        }
+                                    }
+                                    Err(e) => {
+                                        println!("Logger отравлен: {:?}", e);
+                                    }
+                                }
+                            }
+                            None => {
+                                unreachable!()
+                            }
+                        }
+                    }
+                }
+                Err(ref e) => {
+                    println!("Logger отравлен: {:?}", e);
+                }
+            }
+            drop(r_guard);
             drop(thread_clone);
         });
 
@@ -249,7 +279,7 @@ pub enum LoggerRes<T> {
 impl Logger {
     pub fn safe_builder(
         log_op: Option<LoggerFileOptions>,
-        log_in_ram: Option<Vec<String>>,
+        log_in_ram: Option<Arc<Mutex<Vec<String>>>>,
     ) -> LoggerRes<Result<Self, std::io::Error>> {
         let result = std::panic::catch_unwind(|| Self::builder(log_op, log_in_ram));
         match result {
@@ -258,3 +288,5 @@ impl Logger {
         }
     }
 }
+
+//TODO TEST ADD
