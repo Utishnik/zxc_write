@@ -225,13 +225,16 @@ unsafe fn get_childs_dyn_pat_cvoid(
 
         println!("{}", names.vec_string(DEFAULT_FORMAT_RULE));
         println!("CNT Pids:  {}", cnt_pids);
-        let pool = ThreadPool::new(cnt_pids);
-        let an_atomic = Arc::new(AtomicUsize::new(0));
         let avb_p = std::thread::available_parallelism().unwrap_or(NonZero::new(8).unwrap());
+        let pool = ThreadPool::new(/*cnt_pids*/ avb_p.get());
+        let an_atomic = Arc::new(AtomicUsize::new(0));
         let cnt_job = cmp::max(cnt_pids / avb_p, 1);
+        println!("cnt job {}", cnt_job);
         let jobs_vec = jobs_disp(cnt_job, pids_vec);
         let mut vec_cur: usize = 0;
         for jobs in jobs_vec.into_iter() {
+            let l = jobs.len();
+            println!("{} jb len", l);
             let len_job = jobs.clone().len();
             let an_atomic = an_atomic.clone();
             let vec_cur_copy = vec_cur;
@@ -240,11 +243,12 @@ unsafe fn get_childs_dyn_pat_cvoid(
             let log_clone = log.clone();
             pool.execute(move || {
                 for item in jobs.into_iter().enumerate() {
+                    let a = item.0;
+                    println!("{} jb start", a);
                     let pool_log_clone = log_clone.clone();
                     let find_res = extract_str_dyn_mem(item.1, pool_log_clone);
                     if find_res.is_err() {
                         println!("find strings failed: None");
-                        wait_close();
                         return;
                     }
                     let find_res = find_res.unwrap();
@@ -354,7 +358,6 @@ unsafe fn get_childs_cvoid(
                     let find_res = find_strings(item.1, pool_log_clone);
                     if find_res.is_err() {
                         println!("find strings failed: None");
-                        wait_close();
                         return;
                     }
                     let find_res = find_res.unwrap();
@@ -396,9 +399,7 @@ unsafe fn get_childs_cvoid(
 fn main() {
     let build_log = Logger::safe_builder(None, None);
     let unwrap = match build_log {
-        LoggerRes::Ok(ok) => {
-            ok.ok()
-        }
+        LoggerRes::Ok(ok) => ok.ok(),
         LoggerRes::Panic(_) => {
             println!("[ERROR] Logger отвалился");
             None
@@ -458,7 +459,7 @@ fn main() {
         //get_childs_cvoid(pid);
     }
     wait_close();
-    let find_res = find_strings(pid, log.clone());
+    let find_res = find_strings(pid, log);
     if find_res.is_err() {
         println!("find strings failed: None");
         wait_close();

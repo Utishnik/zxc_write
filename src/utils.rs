@@ -79,7 +79,7 @@ where
         cur_job.push(item.clone());
         i += 1;
     }
-    if cur_job.len() > 0 {
+    if !cur_job.is_empty() {
         jobs_vec.push(cur_job);
     }
     jobs_vec
