@@ -9,7 +9,7 @@ use threadpool::ThreadPool;
 use vec_string::*;
 use windows::core as win_core;
 use zxc_write::find_proccess::*;
-use zxc_write::log::Logger;
+use zxc_write::log::{Logger, LoggerRes};
 use zxc_write::mem::*;
 use zxc_write::privilege::enable_privilege_one;
 use zxc_write::utils::SendablePtr;
@@ -21,7 +21,7 @@ fn wait_close() {
     let _ = std::io::stdin().read_line(&mut buffer);
 }
 
-fn extract_str(dwprocessid: u32, log: Option<Logger>) -> Result<ExtractStrResult, ()> {
+fn extract_str(dwprocessid: u32, log: Option<&Logger>) -> Result<ExtractStrResult, ()> {
     let extract_ascii_strings_fn =
         |buf, size, base_ptr| unsafe { extract_ascii_strings(buf, size, base_ptr, 10, None) };
     let extract_unicode_strings_fn =
@@ -100,7 +100,7 @@ fn extract_str_dyn_mem(dwprocessid: u32, log: Option<&Logger>) -> Result<Extract
     }
 }
 
-fn find_strings(dwprocessid: u32, log: Option<Logger>) -> Result<ExtractStrResult, ()> {
+fn find_strings(dwprocessid: u32, log: Option<&Logger>) -> Result<ExtractStrResult, ()> {
     let strs = extract_str(dwprocessid, log);
     if let Err(e) = strs {
         println!("[DEBUG] strs Err: {:?}", e);
@@ -239,23 +239,6 @@ unsafe fn get_childs_dyn_pat_cvoid(
             let ret_ptr_clone = ret_ptr.clone();
             let log_clone = log.clone();
             pool.execute(move || {
-                /*
-                let inner = log_clone.deref();
-                let log_arg: Option<&Logger> =
-                if let Some(x) = inner{
-                    let guard = x.lock();
-                    match guard {
-                        Ok(ok) => {
-                            let inner = ok.deref();
-                            Some(inner)
-                        },
-                        Err(_) => None,
-                    }
-                }
-                else{
-                    None
-                };
-                */
                 let inner = log_clone.deref().as_ref();
                 let global_guard: MutexGuard<'_, Logger>;
                 let unwrap: Option<&Logger> = match inner {
@@ -378,9 +361,25 @@ unsafe fn get_childs_cvoid(
             let vec_cur_copy = vec_cur;
             let an_atomic = an_atomic.clone();
             let ret_ptr_clone = ret_ptr.clone();
+            let log_clone = log.clone();
             pool.execute(move || {
+                let inner = log_clone.deref().as_ref();
+                let global_guard: MutexGuard<'_, Logger>;
+                let unwrap: Option<&Logger> = match inner {
+                    Some(x) => {
+                        let guard = x.lock();
+                        match guard {
+                            Ok(ok) => {
+                                global_guard = ok;
+                                Some(global_guard.deref())
+                            }
+                            Err(_) => None,
+                        }
+                    }
+                    None => None,
+                };
                 for item in jobs.into_iter().enumerate() {
-                    let find_res = find_strings(item.1);
+                    let find_res = find_strings(item.1,unwrap);
                     if find_res.is_err() {
                         println!("find strings failed: None");
                         wait_close();
@@ -423,6 +422,28 @@ unsafe fn get_childs_cvoid(
 }
 
 fn main() {
+    let build_log = Logger::safe_builder(None, None);
+    let unwrap = match build_log {
+        LoggerRes::Ok(ok) => {
+            if let Ok(ok) = ok{
+                Some(ok)
+            }
+            else{
+                None
+            }
+        }
+        LoggerRes::Panic(_) => {
+            println!("[ERROR] Logger отвалился");
+            None
+        }
+    };
+    let log:Arc<Option<Mutex<Logger>>> = if let Some(ref x) = unwrap {
+        Arc::new(Some(Mutex::new(x)))
+    }
+    else{
+        Arc::new(None)
+    };
+    
     //find_strings();
     let privilege_res = enable_privilege_one("SeDebugPrivilege");
     if let Err(e) = privilege_res {
@@ -439,7 +460,7 @@ fn main() {
     println!("[DEBUG] pid: {}", pid);
     unsafe {
         let res_dyn_pat: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
-            get_childs_dyn_pat_cvoid(pid, "zxc".to_string());
+            get_childs_dyn_pat_cvoid(pid, "zxc".to_string(),log);
         if let Err(e) = res_dyn_pat {
             println!("[ERROR] {:?}", e);
             wait_close();
@@ -475,7 +496,7 @@ fn main() {
         //get_childs_cvoid(pid);
     }
     wait_close();
-    let find_res = find_strings(pid);
+    let find_res = find_strings(pid,unwrap.as_ref());
     if find_res.is_err() {
         println!("find strings failed: None");
         wait_close();

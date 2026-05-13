@@ -661,7 +661,7 @@ pub fn scan_process_processors_lossy_gen<T, F>(
     start_cap: usize,
     max_addr_offset: usize,
     start_addr: Option<*const c_void>,
-    log: Option<Logger>,
+    log: Option<&Logger>,
 ) -> Result<ExtractResult<T>, ScanProcessStringsError>
 where
     F: FnMut(*const c_void, usize, *const c_void) -> Vec<T>,
