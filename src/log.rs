@@ -210,6 +210,7 @@ impl Logger {
             }
         }
     }
+
     pub const fn with_time(mut self, time: bool) -> Self {
         self.with_time = time;
         self
@@ -266,6 +267,71 @@ impl Logger {
     {
         let warn = LazyLock::force(&WARN_MSG).clone();
         self.log(warn, f);
+    }
+
+    //untrack
+    fn untrack_log<F, T>(&self, level: String, f: F)
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: AsRef<str>,
+    {
+        let tt = self.with_time;
+        let entry = LogEntry {
+            closure: Box::new(move || {
+                let time = match tt {
+                    true => format!(
+                        "{}",
+                        chrono::offset::Local::now().format("%Y-%m-%d %H:%M:%S ")
+                    ),
+                    false => String::new(),
+                };
+                let message = f();
+                format!("{} {} {}", time, level, message.as_ref())
+            }),
+            log_to: self.log_to.clone(),
+        };
+
+        unsafe {
+            match cell_borrow(&self.sx).send(entry) {
+                Ok(_) => (),
+                Err(_) => panic!("Logger thread died :("),
+            }
+        }
+    }
+
+    pub fn untrack_info<F, T>(&self, f: F)
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: AsRef<str>,
+    {
+        let info = LazyLock::force(&INFO_MSG).clone(); //бля честно залупа вышла но похуя
+        self.untrack_log(info, f);
+    }
+
+    pub fn untrack_error<F, T>(&self, f: F)
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: AsRef<str>,
+    {
+        let err = LazyLock::force(&ERR_MSG).clone();
+        self.untrack_log(err, f);
+    }
+    pub fn untrack_debug<F, T>(&self, f: F)
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: AsRef<str>,
+    {
+        let dbg = LazyLock::force(&DBG_MSG).clone();
+        self.untrack_log(dbg, f);
+    }
+
+    pub fn untrack_warning<F, T>(&self, f: F)
+    where
+        F: FnOnce() -> T + Send + 'static,
+        T: AsRef<str>,
+    {
+        let warn = LazyLock::force(&WARN_MSG).clone();
+        self.untrack_log(warn, f);
     }
 }
 
