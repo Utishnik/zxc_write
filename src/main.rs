@@ -397,22 +397,14 @@ fn main() {
     let build_log = Logger::safe_builder(None, None);
     let unwrap = match build_log {
         LoggerRes::Ok(ok) => {
-            if let Ok(ok) = ok {
-                Some(ok)
-            } else {
-                None
-            }
+            ok.ok()
         }
         LoggerRes::Panic(_) => {
             println!("[ERROR] Logger отвалился");
             None
         }
     };
-    let log: Arc<Option<Mutex<Logger>>> = if let Some(x) = unwrap {
-        Arc::new(Some(Mutex::new(x)))
-    } else {
-        Arc::new(None)
-    };
+    let log = unwrap.map_or_else(|| Arc::new(None), |x| Arc::new(Some(Mutex::new(x))));
 
     //find_strings();
     let privilege_res = enable_privilege_one("SeDebugPrivilege");

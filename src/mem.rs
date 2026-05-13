@@ -473,7 +473,7 @@ where
     if let Some(x) = log_deref {
         let guard = x.lock();
         if let Ok(ok_guard) = guard {
-            ok_guard.info(move || format!("[DEBUG] PID SCAN:\t{dwprocessid}"));
+            ok_guard.untrack_info(move || format!("[DEBUG] PID SCAN:\t{dwprocessid}"));
         }
     }
     drop(log);
@@ -677,7 +677,7 @@ where
     if let Some(x) = deref_log {
         let guard = x.lock();
         if let Ok(ok_guard) = guard {
-            ok_guard.info(move || format!("[DEBUG] PID SCAN:\t{dwprocessid}"));
+            ok_guard.untrack_info(move || format!("[DEBUG] PID SCAN:\t{dwprocessid}"));
         }
     }
     drop(log);
