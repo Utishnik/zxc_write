@@ -21,7 +21,7 @@ fn wait_close() {
     let _ = std::io::stdin().read_line(&mut buffer);
 }
 
-fn extract_str(dwprocessid: u32, log: Option<&Logger>) -> Result<ExtractStrResult, ()> {
+fn extract_str(dwprocessid: u32, log: OptionLog) -> Result<ExtractStrResult, ()> {
     let extract_ascii_strings_fn =
         |buf, size, base_ptr| unsafe { extract_ascii_strings(buf, size, base_ptr, 10, None) };
     let extract_unicode_strings_fn =
@@ -64,7 +64,7 @@ fn extract_str(dwprocessid: u32, log: Option<&Logger>) -> Result<ExtractStrResul
     }
 }
 
-fn extract_str_dyn_mem(dwprocessid: u32, log: Option<&Logger>) -> Result<ExtractStrResult, ()> {
+fn extract_str_dyn_mem(dwprocessid: u32, log: OptionLog) -> Result<ExtractStrResult, ()> {
     let extract_ascii_strings_fn =
         |buf, size, base_ptr| unsafe { extract_ascii_strings(buf, size, base_ptr, 5, None) };
     let extract_unicode_strings_fn =
@@ -100,7 +100,7 @@ fn extract_str_dyn_mem(dwprocessid: u32, log: Option<&Logger>) -> Result<Extract
     }
 }
 
-fn find_strings(dwprocessid: u32, log: Option<&Logger>) -> Result<ExtractStrResult, ()> {
+fn find_strings(dwprocessid: u32, log: OptionLog) -> Result<ExtractStrResult, ()> {
     let strs = extract_str(dwprocessid, log);
     if let Err(e) = strs {
         println!("[DEBUG] strs Err: {:?}", e);
@@ -239,23 +239,9 @@ unsafe fn get_childs_dyn_pat_cvoid(
             let ret_ptr_clone = ret_ptr.clone();
             let log_clone = log.clone();
             pool.execute(move || {
-                let inner = log_clone.deref().as_ref();
-                let global_guard: MutexGuard<'_, Logger>;
-                let unwrap: Option<&Logger> = match inner {
-                    Some(x) => {
-                        let guard = x.lock();
-                        match guard {
-                            Ok(ok) => {
-                                global_guard = ok;
-                                Some(global_guard.deref())
-                            }
-                            Err(_) => None,
-                        }
-                    }
-                    None => None,
-                };
                 for item in jobs.into_iter().enumerate() {
-                    let find_res = extract_str_dyn_mem(item.1, unwrap);
+                    let pool_log_clone = log_clone.clone();
+                    let find_res = extract_str_dyn_mem(item.1, pool_log_clone);
                     if find_res.is_err() {
                         println!("find strings failed: None");
                         wait_close();
@@ -363,23 +349,9 @@ unsafe fn get_childs_cvoid(
             let ret_ptr_clone = ret_ptr.clone();
             let log_clone = log.clone();
             pool.execute(move || {
-                let inner = log_clone.deref().as_ref();
-                let global_guard: MutexGuard<'_, Logger>;
-                let unwrap: Option<&Logger> = match inner {
-                    Some(x) => {
-                        let guard = x.lock();
-                        match guard {
-                            Ok(ok) => {
-                                global_guard = ok;
-                                Some(global_guard.deref())
-                            }
-                            Err(_) => None,
-                        }
-                    }
-                    None => None,
-                };
                 for item in jobs.into_iter().enumerate() {
-                    let find_res = find_strings(item.1,unwrap);
+                    let pool_log_clone = log_clone.clone();
+                    let find_res = find_strings(item.1, pool_log_clone);
                     if find_res.is_err() {
                         println!("find strings failed: None");
                         wait_close();
@@ -425,10 +397,9 @@ fn main() {
     let build_log = Logger::safe_builder(None, None);
     let unwrap = match build_log {
         LoggerRes::Ok(ok) => {
-            if let Ok(ok) = ok{
+            if let Ok(ok) = ok {
                 Some(ok)
-            }
-            else{
+            } else {
                 None
             }
         }
@@ -437,13 +408,12 @@ fn main() {
             None
         }
     };
-    let log:Arc<Option<Mutex<Logger>>> = if let Some(ref x) = unwrap {
+    let log: Arc<Option<Mutex<Logger>>> = if let Some(x) = unwrap {
         Arc::new(Some(Mutex::new(x)))
-    }
-    else{
+    } else {
         Arc::new(None)
     };
-    
+
     //find_strings();
     let privilege_res = enable_privilege_one("SeDebugPrivilege");
     if let Err(e) = privilege_res {
@@ -460,7 +430,7 @@ fn main() {
     println!("[DEBUG] pid: {}", pid);
     unsafe {
         let res_dyn_pat: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
-            get_childs_dyn_pat_cvoid(pid, "zxc".to_string(),log);
+            get_childs_dyn_pat_cvoid(pid, "zxc".to_string(), log.clone());
         if let Err(e) = res_dyn_pat {
             println!("[ERROR] {:?}", e);
             wait_close();
@@ -496,7 +466,7 @@ fn main() {
         //get_childs_cvoid(pid);
     }
     wait_close();
-    let find_res = find_strings(pid,unwrap.as_ref());
+    let find_res = find_strings(pid, log.clone());
     if find_res.is_err() {
         println!("find strings failed: None");
         wait_close();

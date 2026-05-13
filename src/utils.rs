@@ -1,6 +1,7 @@
 use crate::log::*;
 use core::marker::PhantomData;
 use std::ffi::c_void;
+use std::sync::{Arc, Mutex};
 use windows::Win32::Foundation::*;
 
 ///# Safety
@@ -111,3 +112,5 @@ unsafe impl Sync for SendableCvoidPtr {}
 pub struct SyncLogger(pub Logger);
 
 unsafe impl Sync for SyncLogger {}
+
+pub type OptionLog = Arc<Option<Mutex<Logger>>>;

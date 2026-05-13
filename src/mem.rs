@@ -1,4 +1,5 @@
 use crate::log::*;
+use crate::utils::OptionLog;
 use crate::utils::SyncLogger;
 use std::fmt::format;
 use std::ops::{Deref, DerefMut};
@@ -461,16 +462,21 @@ pub fn scan_process_processors_mbi<F, T>(
     processors: &mut [F],
     start_cap: usize,
     rpmr: Vec<ReadProcessMemoryResult>, //ахуеное название
-    log: Option<&Logger>,
+    log: OptionLog,
 ) -> Result<ExtractResult<T>, ScanProcessStringsError>
 where
     F: FnMut(*const c_void, usize, *const c_void) -> Vec<T>,
 {
     //PROCESS_QUERY_INFORMATION
     //println!("[DEBUG] PID SCAN:\t{dwprocessid}"); TODO LOG!
-    if let Some(x) = log {
-        x.info(move || format!("[DEBUG] PID SCAN:\t{dwprocessid}"));
+    let log_deref = log.deref();
+    if let Some(x) = log_deref {
+        let guard = x.lock();
+        if let Ok(ok_guard) = guard {
+            ok_guard.info(move || format!("[DEBUG] PID SCAN:\t{dwprocessid}"));
+        }
     }
+    drop(log);
     let h_process = open_read_process(dwprocessid);
     match h_process {
         Ok(_) => {
@@ -661,15 +667,20 @@ pub fn scan_process_processors_lossy_gen<T, F>(
     start_cap: usize,
     max_addr_offset: usize,
     start_addr: Option<*const c_void>,
-    log: Option<&Logger>,
+    log: OptionLog,
 ) -> Result<ExtractResult<T>, ScanProcessStringsError>
 where
     F: FnMut(*const c_void, usize, *const c_void) -> Vec<T>,
 {
     //println!("[DEBUG] PID SCAN:\t{dwprocessid}"); TODO LOG
-    if let Some(x) = log {
-        x.info(move || format!("[DEBUG] PID SCAN:\t{dwprocessid}"));
+    let deref_log = log.deref();
+    if let Some(x) = deref_log {
+        let guard = x.lock();
+        if let Ok(ok_guard) = guard {
+            ok_guard.info(move || format!("[DEBUG] PID SCAN:\t{dwprocessid}"));
+        }
     }
+    drop(log);
 
     let h_process = open_read_process(dwprocessid).map_err(ScanProcessStringsError::OpenProcess)?;
     let _guard = HandleGuard(h_process);
