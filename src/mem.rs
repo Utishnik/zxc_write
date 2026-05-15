@@ -336,7 +336,7 @@ pub fn scan_process_processors<F, T>(
     //PROCESS_QUERY_INFORMATION
     //println!("[DEBUG] PID SCAN:\t{dwprocessid}"); TODO ! LOG
     if let Some(x) = log {
-        x.info(move || format!("[DEBUG] PID SCAN:\t{dwprocessid}"));
+        x.info(move || format!("PID SCAN:\t{dwprocessid}"));
     }
     let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
 
@@ -468,7 +468,6 @@ where
     F: FnMut(*const c_void, usize, *const c_void) -> Vec<T>,
 {
     //PROCESS_QUERY_INFORMATION
-    //println!("[DEBUG] PID SCAN:\t{dwprocessid}"); TODO LOG!
     let log_deref = log.deref();
     if let Some(x) = log_deref {
         let guard = x.lock();
@@ -479,7 +478,8 @@ where
     drop(log);
     let h_process = open_read_process(dwprocessid);
     match h_process {
-        Ok(_) => {
+        Ok(h_process) => {
+            let _guard = HandleGuard(h_process);
             let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
             for item in rpmr.iter() {
                 let buf = &item.buf;
@@ -657,10 +657,10 @@ macro_rules! gen_dispatch {
     };
 }
 
-/// Универсальный обход памяти процесса с извлечением данных.
+#[doc = "/// Универсальный обход памяти процесса с извлечением данных.
 /// Принимает срез замыканий, каждое из которых вызывается для каждого читабельного региона.
 /// Возвращает `Vec<Option<Vec<Vec<T>>>>` — по одному `Option` на регион,
-/// внутри `Some` лежит результат каждого обработчика (`Vec<T>` на обработчик).
+/// внутри `Some` лежит результат каждого обработчика (`Vec<T>` на обработчик)."]
 pub fn scan_process_processors_lossy_gen<T, F>(
     dwprocessid: u32,
     processors: &mut [F],
@@ -677,7 +677,7 @@ where
     if let Some(x) = deref_log {
         let guard = x.lock();
         if let Ok(ok_guard) = guard {
-            ok_guard.untrack_info(move || format!("[DEBUG] PID SCAN:\t{dwprocessid}"));
+            ok_guard.untrack_info(move || format!("PID SCAN:\t{dwprocessid}"));
         }
     }
     drop(log);

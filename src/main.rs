@@ -71,33 +71,31 @@ fn extract_str_dyn_mem(dwprocessid: u32, log: OptionLog) -> Result<ExtractStrRes
         |buf, size, base_ptr| unsafe { extract_unicode_strings(buf, size, base_ptr, 5, None) };
     let scan_res = scan_dynamic_mem(dwprocessid, 48, 500_000_000, 101_704_332_083_002, None);
 
-    if let Err(_) = scan_res {
+    if scan_res.is_err() {
         return Err(());
     }
     let scan_res = scan_res.unwrap();
     let mut processors = [extract_ascii_strings_fn, extract_unicode_strings_fn];
     let result = scan_process_processors_mbi(dwprocessid, &mut processors, 50000, scan_res, log);
-    if let Ok(extract_result) = result {
+    result.ok().map_or(Err(()), |extract_result| {
         let all_ascii: Vec<_> = extract_result
             .iter()
-            .filter_map(|opt| Some(opt))
-            .flat_map(|per_proc| per_proc.into_iter().nth(0)) // ascii — первый обработчик
+            .filter_map(Some)
+            .flat_map(|per_proc| per_proc.iter().next())
             .flatten()
             .collect();
         let all_unicode: Vec<_> = extract_result
             .iter()
-            .filter_map(|opt| Some(opt))
-            .flat_map(|per_proc| per_proc.into_iter().nth(1)) // unicode — второй обработчик
+            .filter_map(Some)
+            .flat_map(|per_proc| per_proc.iter().nth(1))
             .flatten()
             .collect();
-        let res: ExtractStrResult = ExtractStrResult {
+        let res = ExtractStrResult {
             ascii: vec_flat2_owned_xz(all_ascii),
             unicode: vec_flat2_owned_xz(all_unicode),
         };
         Ok(res)
-    } else {
-        Err(())
-    }
+    })
 }
 
 fn find_strings(dwprocessid: u32, log: OptionLog) -> Result<ExtractStrResult, ()> {
@@ -233,8 +231,6 @@ unsafe fn get_childs_dyn_pat_cvoid(
         let jobs_vec = jobs_disp(cnt_job, pids_vec);
         let mut vec_cur: usize = 0;
         for jobs in jobs_vec.into_iter() {
-            let l = jobs.len();
-            println!("{} jb len", l);
             let len_job = jobs.clone().len();
             let an_atomic = an_atomic.clone();
             let vec_cur_copy = vec_cur;
@@ -243,8 +239,6 @@ unsafe fn get_childs_dyn_pat_cvoid(
             let log_clone = log.clone();
             pool.execute(move || {
                 for item in jobs.into_iter().enumerate() {
-                    let a = item.0;
-                    println!("{} jb start", a);
                     let pool_log_clone = log_clone.clone();
                     let find_res = extract_str_dyn_mem(item.1, pool_log_clone);
                     if find_res.is_err() {
