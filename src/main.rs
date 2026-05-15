@@ -421,10 +421,32 @@ unsafe fn get_childs_cvoid(
         while let load = an_atomic.load(Ordering::Relaxed)
             && load != cnt_pids
         {}
+        shutdown_logger(log);
         Ok(ret)
     } else {
         unreachable!();
     }
+}
+
+fn shutdown_logger(log: Arc<Option<Mutex<Logger>>>) -> Result<(),()>{
+    if let Some(x) = log.deref() {
+        let guard = x.lock();
+        match guard {
+            Ok(mut ok_guard) => {
+                if ok_guard.shutdown().is_err() {
+                    #[cfg(debug_assertions)]
+                    println!("ошибка закрытия логгера");
+                    return Err(());
+                }
+            }
+            Err(ref e) => {
+                #[cfg(debug_assertions)]
+                println!("Logger отравлен: {:?}", e);
+                return Err(());
+            }
+        }
+    }
+    Ok(())
 }
 
 fn main() {
@@ -489,20 +511,7 @@ fn main() {
         //let _: Result<Vec<ScanStrAllResSend::<SendableCvoidPtrMut>>, win_core::Error> =
         //get_childs_cvoid(pid);
     }
-    if let Some(x) = log.deref() {
-        let guard = x.lock();
-        match guard {
-            Ok(mut ok_guard) => {
-                if ok_guard.shutdown().is_err() {
-                    println!("ошибка закрытия логгера");
-                }
-            }
-            Err(ref e) => {
-                println!("Logger отравлен: {:?}", e);
-                return;
-            }
-        }
-    }
+    
     wait_close();
     let find_res = find_strings(pid, log);
     if find_res.is_err() {
