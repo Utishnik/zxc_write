@@ -129,6 +129,13 @@ struct BaseAddrRes {
     pub unicode: Vec<*const c_void>,
 }
 
+impl BaseAddrRes {
+    pub fn with_capacity(&mut self, cap_assci: usize, cap_unicode: usize) {
+        self.assci = Vec::with_capacity(cap_assci);
+        self.unicode = Vec::with_capacity(cap_unicode);
+    }
+}
+
 unsafe fn get_base_addr_assci_send<T>(find_res: &ExtractStrResult) -> Vec<SendablePtr<T>>
 //where T: Clone,
 {
@@ -157,6 +164,13 @@ struct BaseAddrResSend<T>
     pub unicode: Vec<SendablePtr<T>>,
 }
 
+impl<T> BaseAddrResSend<T> {
+    pub fn with_capacity(&mut self, cap_assci: usize, cap_unicode: usize) {
+        self.assci = Vec::with_capacity(cap_assci);
+        self.unicode = Vec::with_capacity(cap_unicode);
+    }
+}
+
 fn get_base_addr_all(find_res: &ExtractStrResult) -> BaseAddrRes {
     let res_ascii = get_base_addr_assci(find_res);
     let res_unicode = get_base_addr_unicode(find_res);
@@ -183,8 +197,15 @@ struct ScanStrRes {
     pub finds_unicode: Vec<String>,
 }
 
+impl ScanStrRes {
+    fn with_capacity(&mut self, cap_ascii: usize, cap_unicode: usize) {
+        self.finds_ascii = Vec::with_capacity(cap_ascii);
+        self.finds_unicode = Vec::with_capacity(cap_unicode);
+    }
+}
+
 #[derive(Clone)]
-struct ScanStrAllRes {
+struct ScanStrAllResCvoid {
     pub ssr: ScanStrRes,
     pub finds_addr: BaseAddrRes,
 }
@@ -193,8 +214,15 @@ struct ScanStrAllRes {
 struct ScanStrAllResSend<T>
 //where T: Clone,
 {
-    pub ssr: ScanStrRes,
+    pub ssr: ScanStrRes, //ub!
     pub finds_addr: BaseAddrResSend<T>,
+}
+
+impl<T> ScanStrAllResSend<T> {
+    pub fn with_capacity(&mut self, cap_ssr: usize, cap_finds_addr: usize) {
+        self.finds_addr.with_capacity(cap_ssr, cap_ssr);
+        self.ssr.with_capacity(cap_finds_addr, cap_finds_addr);
+    }
 }
 
 unsafe fn get_childs_dyn_pat_cvoid(
@@ -217,7 +245,16 @@ unsafe fn get_childs_dyn_pat_cvoid(
             })
             .collect::<Vec<String>>();
         let cnt_pids = pids_vec.len();
+        let покачтовременная_асски: usize = 4096;
+        let покачтовременная_юни: usize = 4096;
         let mut ret: Vec<ScanStrAllResSend<SendableCvoidPtrMut>> = Vec::with_capacity(cnt_pids);
+        let alloc_iter = ret.iter_mut().map(|x| {
+            x.finds_addr
+                .with_capacity(покачтовременная_асски, покачтовременная_юни);
+            x.ssr
+                .with_capacity(покачтовременная_асски, покачтовременная_юни);
+        });
+        for _ in alloc_iter.into_iter() {}
         let ret_raw_ptr = ret.as_mut_ptr();
         let ret_ptr = SendablePtrMut::<ScanStrAllResSend<SendableCvoidPtrMut>>(ret_raw_ptr);
 
@@ -282,7 +319,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
                         //нельзя перемещать
                         //потому что блять типо поле мы захватаем а не весь тип а поле 0 как раз у нас нихуя не send это *mut
                         let inner = ret_ptr.0.add(vec_cur_copy + item.0);
-                        (*inner).finds_addr = finds_addr;
+                        (*inner).finds_addr = finds_addr; //тут ub бля у меня же вектор кажется он же не перналоцируется
                         (*inner).ssr = ScanStrRes {
                             finds_ascii,
                             finds_unicode: finds_uc,
@@ -451,6 +488,20 @@ fn main() {
     unsafe {
         //let _: Result<Vec<ScanStrAllResSend::<SendableCvoidPtrMut>>, win_core::Error> =
         //get_childs_cvoid(pid);
+    }
+    if let Some(x) = log.deref() {
+        let guard = x.lock();
+        match guard {
+            Ok(mut ok_guard) => {
+                if ok_guard.shutdown().is_err() {
+                    println!("ошибка закрытия логгера");
+                }
+            }
+            Err(ref e) => {
+                println!("Logger отравлен: {:?}", e);
+                return;
+            }
+        }
     }
     wait_close();
     let find_res = find_strings(pid, log);

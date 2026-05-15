@@ -217,7 +217,7 @@ impl Logger {
     }
 
     /// Waits until all messages are logged
-    fn shutdown(&self) -> Result<(), std::io::Error> {
+    pub fn shutdown(&mut self) -> Result<(), std::io::Error> {
         self.shutdown.store(true, Ordering::Release);
         unsafe {
             while !cell_borrow(&self.sx).is_disconnected() {
