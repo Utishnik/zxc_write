@@ -42,6 +42,10 @@
     clippy::redundant_type_annotations, // не требовать убирать явные типы
 )]
 
+use mimalloc::MiMalloc;
+#[global_allocator]
+static GLOBAL: MiMalloc = MiMalloc;
+
 pub mod crypt;
 pub mod enum_modules;
 pub mod error_hand;
