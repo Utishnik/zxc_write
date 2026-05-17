@@ -245,8 +245,6 @@ unsafe fn get_childs_dyn_pat_cvoid(
             })
             .collect::<Vec<String>>();
         let cnt_pids = pids_vec.len();
-        let покачтовременная_асски: usize = 4096;
-        let покачтовременная_юни: usize = 4096;
         let mut ret: Vec<ScanStrAllResSend<SendableCvoidPtrMut>> = Vec::with_capacity(cnt_pids);
         let ret_raw_ptr = ret.as_mut_ptr();
         let ret_ptr = SendablePtrMut::<ScanStrAllResSend<SendableCvoidPtrMut>>(ret_raw_ptr);
@@ -423,7 +421,7 @@ unsafe fn get_childs_cvoid(
     }
 }
 
-fn shutdown_logger(log: Arc<Option<Mutex<Logger>>>) -> Result<(),()>{
+fn shutdown_logger(log: Arc<Option<Mutex<Logger>>>) -> Result<(), ()> {
     if let Some(x) = log.deref() {
         let guard = x.lock();
         match guard {
@@ -471,7 +469,7 @@ fn main() {
     println!("[DEBUG] pid: {}", pid);
     unsafe {
         let res_dyn_pat: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
-            get_childs_dyn_pat_cvoid(pid, "zxc".to_string(), log.clone());
+            get_childs_dyn_pat_cvoid(pid, "zxc".to_string(), log);
         if let Err(e) = res_dyn_pat {
             println!("[ERROR] {:?}", e);
             wait_close();
@@ -487,6 +485,11 @@ fn main() {
             .flat_map(|x| x.finds_addr.unicode.clone())
             .collect();
         //#[cfg(debug_assertions)]
+        println!(
+            "addres cnt ascii: {} unicode: {}",
+            addr_only_assci.len(),
+            addr_only_unicode.len()
+        );
         {
             let fmt_assci_addr: Vec<_> = addr_only_assci
                 .iter()
@@ -506,19 +509,6 @@ fn main() {
         //let _: Result<Vec<ScanStrAllResSend::<SendableCvoidPtrMut>>, win_core::Error> =
         //get_childs_cvoid(pid);
     }
-    
-    wait_close();
-    let find_res = find_strings(pid, log);
-    if find_res.is_err() {
-        println!("find strings failed: None");
-        wait_close();
-        return;
-    }
-    let find_res = find_res.unwrap();
-    println!("Ascii:\t{}", find_res.ascii.vec_string(DEFAULT_FORMAT_RULE));
-    println!(
-        "Unicode:\t{}",
-        find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
-    );
+
     wait_close();
 }

@@ -8,6 +8,7 @@ use std::fs::File;
 use std::io::Error;
 use std::io::Write;
 use std::ops::Deref;
+use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
 
@@ -36,6 +37,16 @@ pub struct Logger {
     with_time: bool,
     shutdown: Arc<AtomicBool>,
     mem_ptr: Arc<RwLock<Vec<String>>>,
+    sender_cnt: Arc<AtomicUsize>,
+}
+
+#[derive(Debug)]
+pub struct SenderCntGuard(pub Arc<AtomicUsize>);
+
+impl Drop for SenderCntGuard {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::Relaxed);
+    }
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -164,6 +175,7 @@ impl Logger {
             with_time: false,
             shutdown: shutdown_flag,
             mem_ptr,
+            sender_cnt: Arc::new(AtomicUsize::new(0)),
         })
     }
     fn open_log_file(op: LoggerFileOptions) -> Result<File, std::io::Error> {
@@ -180,6 +192,8 @@ impl Logger {
         F: FnOnce() -> T + Send + 'static,
         T: AsRef<str>,
     {
+        let _guard = SenderCntGuard(self.sender_cnt.clone());
+        self.sender_cnt.fetch_add(1, Ordering::Relaxed);
         let tt = self.with_time;
         let location = std::panic::Location::caller();
         let entry = LogEntry {
@@ -219,10 +233,8 @@ impl Logger {
     /// Waits until all messages are logged
     pub fn shutdown(&mut self) -> Result<(), std::io::Error> {
         self.shutdown.store(true, Ordering::Release);
-        unsafe {
-            while !cell_borrow(&self.sx).is_disconnected() {
-                std::thread::yield_now();
-            }
+        while self.sender_cnt.load(Ordering::Relaxed) != 0 {
+            std::thread::yield_now();
         }
 
         if let Some(ref file) = self.file {
