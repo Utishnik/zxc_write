@@ -248,13 +248,6 @@ unsafe fn get_childs_dyn_pat_cvoid(
         let покачтовременная_асски: usize = 4096;
         let покачтовременная_юни: usize = 4096;
         let mut ret: Vec<ScanStrAllResSend<SendableCvoidPtrMut>> = Vec::with_capacity(cnt_pids);
-        let alloc_iter = ret.iter_mut().map(|x| {
-            x.finds_addr
-                .with_capacity(покачтовременная_асски, покачтовременная_юни);
-            x.ssr
-                .with_capacity(покачтовременная_асски, покачтовременная_юни);
-        });
-        for _ in alloc_iter.into_iter() {}
         let ret_raw_ptr = ret.as_mut_ptr();
         let ret_ptr = SendablePtrMut::<ScanStrAllResSend<SendableCvoidPtrMut>>(ret_raw_ptr);
 
@@ -341,6 +334,8 @@ unsafe fn get_childs_dyn_pat_cvoid(
         while let load = an_atomic.load(Ordering::Relaxed)
             && load != cnt_pids
         {}
+        println!("log");
+        let _ = shutdown_logger(log);
         Ok(ret)
     } else {
         unreachable!();
@@ -421,7 +416,7 @@ unsafe fn get_childs_cvoid(
         while let load = an_atomic.load(Ordering::Relaxed)
             && load != cnt_pids
         {}
-        shutdown_logger(log);
+        let _ = shutdown_logger(log);
         Ok(ret)
     } else {
         unreachable!();
