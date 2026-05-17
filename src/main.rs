@@ -298,10 +298,10 @@ unsafe fn get_childs_dyn_pat_cvoid(
                             "finds unicode: {}",
                             finds_uc.vec_string(DEFAULT_FORMAT_RULE)
                         );
-                        println!(
+                        /*println!(
                             "finds ascii: {}",
                             finds_ascii.vec_string(DEFAULT_FORMAT_RULE)
-                        );
+                        );*/
                     }
                     unsafe {
                         let ret_ptr = ret_ptr_clone.clone();
@@ -310,11 +310,13 @@ unsafe fn get_childs_dyn_pat_cvoid(
                         //нельзя перемещать
                         //потому что блять типо поле мы захватаем а не весь тип а поле 0 как раз у нас нихуя не send это *mut
                         let inner = ret_ptr.0.add(vec_cur_copy + item.0);
-                        (*inner).finds_addr = finds_addr; //тут ub бля у меня же вектор кажется он же не перналоцируется
+                        (*inner).finds_addr = finds_addr;
                         (*inner).ssr = ScanStrRes {
                             finds_ascii,
                             finds_unicode: finds_uc,
                         };
+                        #[cfg(debug_assertions)]
+                        (*inner).finds_addr.assci.iter().for_each(|x|println!("addres ascii: {:p}",x.0));
                     }
                     an_atomic.fetch_add(1, Ordering::Relaxed);
                 }
