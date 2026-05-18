@@ -1,8 +1,8 @@
 use crate::utils::HandleGuard;
 use std::mem;
-use windows::Win32::Foundation::{CloseHandle, HANDLE, HMODULE, MAX_PATH};
+use windows::Win32::Foundation::{HMODULE, MAX_PATH};
 use windows::Win32::System::ProcessStatus::{
-    EnumProcessModules, EnumProcessModulesEx, GetModuleFileNameExW, LIST_MODULES_ALL,
+    EnumProcessModules, EnumProcessModulesEx, GetModuleFileNameExW,
 };
 use windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
 use windows::core::Result;

@@ -1,8 +1,9 @@
-use vec_string::*;
 use windows::{
     Win32::{Foundation::*, System::Diagnostics::ToolHelp::*},
     core::Error,
 };
+
+use vec_string::*;
 
 #[derive(Debug)]
 pub enum FindProccesError {

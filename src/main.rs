@@ -2,9 +2,8 @@ use core::ffi::c_void;
 use std::cmp;
 use std::num::NonZero;
 use std::ops::Deref;
-use std::os::raw::c_double;
 use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 use threadpool::ThreadPool;
 use vec_string::*;
 use windows::core as win_core;
@@ -64,19 +63,37 @@ fn extract_str(dwprocessid: u32, log: OptionLog) -> Result<ExtractStrResult, ()>
     }
 }
 
-fn extract_str_dyn_mem(dwprocessid: u32, log: OptionLog) -> Result<ExtractStrResult, ()> {
-    let extract_ascii_strings_fn =
-        |buf, size, base_ptr| unsafe { extract_ascii_strings(buf, size, base_ptr, 5, None) };
-    let extract_unicode_strings_fn =
-        |buf, size, base_ptr| unsafe { extract_unicode_strings(buf, size, base_ptr, 5, None) };
+fn extract_str_dyn_mem(
+    dwprocessid: u32,
+    log: OptionLog,
+    min_len: usize,
+    max_len: Option<usize>,
+) -> Result<ExtractStrResult, ()> {
+    let extract_ascii_strings_fn = |buf, size, base_ptr, min_len, max_len| unsafe {
+        extract_ascii_strings(buf, size, base_ptr, min_len, max_len)
+    };
+    let extract_unicode_strings_fn = |buf, size, base_ptr, min_len, max_len| unsafe {
+        extract_unicode_strings(buf, size, base_ptr, min_len, max_len)
+    };
     let scan_res = scan_dynamic_mem(dwprocessid, 48, 500_000_000, 101_704_332_083_002, None);
 
     if scan_res.is_err() {
         return Err(());
     }
     let scan_res = scan_res.unwrap();
-    let mut processors = [extract_ascii_strings_fn, extract_unicode_strings_fn];
-    let result = scan_process_processors_mbi(dwprocessid, &mut processors, 50000, scan_res, log);
+    let mut processors: Vec<DynProcessors<ExtractStr>> = vec![
+        Box::new(extract_ascii_strings_fn) as DynProcessors<ExtractStr>,
+        Box::new(extract_unicode_strings_fn) as DynProcessors<ExtractStr>,
+    ];
+    let result = scan_process_processors_mbi::<ExtractStr>(
+        dwprocessid,
+        processors.as_mut(),
+        50000,
+        scan_res,
+        log,
+        min_len,
+        max_len,
+    );
     result.ok().map_or(Err(()), |extract_result| {
         let all_ascii: Vec<_> = extract_result
             .iter()
@@ -229,6 +246,8 @@ unsafe fn get_childs_dyn_pat_cvoid(
     pid: u32,
     pat: String,
     log: Arc<Option<Mutex<Logger>>>,
+    min_len: usize,
+    max_len: Option<usize>,
 ) -> Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> {
     let childs = get_child_processes(pid);
     if let Err(e) = childs {
@@ -269,7 +288,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
             pool.execute(move || {
                 for item in jobs.into_iter().enumerate() {
                     let pool_log_clone = log_clone.clone();
-                    let find_res = extract_str_dyn_mem(item.1, pool_log_clone);
+                    let find_res = extract_str_dyn_mem(item.1, pool_log_clone, min_len, max_len);
                     if find_res.is_err() {
                         println!("find strings failed: None");
                         return;
@@ -317,7 +336,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
                             finds_unicode: finds_uc,
                         };
                         //#[cfg(debug_assertions)]
-                       // (*inner).finds_addr.assci.iter().for_each(|x|println!("addres ascii: {:p}",x.0));
+                        // (*inner).finds_addr.assci.iter().for_each(|x|println!("addres ascii: {:p}",x.0));
                     }
                     an_atomic.fetch_add(1, Ordering::Relaxed);
                 }
@@ -333,8 +352,8 @@ unsafe fn get_childs_dyn_pat_cvoid(
             vec_cur += len_job;
             ret_len += len_job;
         }
-        unsafe{
-        ret.set_len(ret_len);
+        unsafe {
+            ret.set_len(ret_len);
         }
         while let load = an_atomic.load(Ordering::Relaxed)
             && load != cnt_pids
@@ -476,7 +495,7 @@ fn main() {
     println!("[DEBUG] pid: {}", pid);
     unsafe {
         let res_dyn_pat: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
-            get_childs_dyn_pat_cvoid(pid, "Rust".to_string(), log);
+            get_childs_dyn_pat_cvoid(pid, "Rust".to_string(), log, 5, Some(10));
         if let Err(e) = res_dyn_pat {
             println!("[ERROR] {:?}", e);
             wait_close();
@@ -497,6 +516,7 @@ fn main() {
             addr_only_assci.len(),
             addr_only_unicode.len()
         );
+        // #[cfg(debug_assertions)]
         {
             let fmt_assci_addr: Vec<_> = addr_only_assci
                 .iter()
@@ -507,9 +527,9 @@ fn main() {
                 .map(|x| format!("{:p}", x.0))
                 .collect();
             let str_assci_addr = fmt_assci_addr.vec_string(DEFAULT_FORMAT_RULE);
-            let str_unicode_addr = fmt_unicode_addr.vec_string(DEFAULT_FORMAT_RULE);
+            let _str_unicode_addr = fmt_unicode_addr.vec_string(DEFAULT_FORMAT_RULE);
             println!("ASSCI ADDR:  {}", str_assci_addr);
-            println!("UNICODE ADDR:  {}", str_unicode_addr);
+            //println!("UNICODE ADDR:  {}", str_unicode_addr);
         }
     };
     unsafe {

@@ -1,8 +1,6 @@
 use crate::log::*;
 use crate::utils::OptionLog;
-use crate::utils::SyncLogger;
-use std::fmt::format;
-use std::ops::{Deref, DerefMut};
+use std::ops::Deref;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::{ffi::c_void, ptr};
 
@@ -15,11 +13,7 @@ use windows::{
     Win32::{
         Foundation::*,
         System::{
-            Diagnostics::{
-                Debug::{ReadProcessMemory, WriteProcessMemory},
-                ToolHelp::*,
-            },
-            LibraryLoader::*,
+            Diagnostics::Debug::{ReadProcessMemory, WriteProcessMemory},
             Memory::*,
             Threading::*,
         },
@@ -456,17 +450,19 @@ pub struct MemoryRegion {
     pub mbi: MEMORY_BASIC_INFORMATION,
 }
 
+pub type DynProcessors<T> =
+    Box<dyn FnMut(*const c_void, usize, *const c_void, usize, Option<usize>) -> Vec<T>>;
+
 #[must_use]
-pub fn scan_process_processors_mbi<F, T>(
+pub fn scan_process_processors_mbi<T>(
     dwprocessid: u32,
-    processors: &mut [F],
+    processors: &mut [DynProcessors<T>],
     start_cap: usize,
     rpmr: Vec<ReadProcessMemoryResult>, //ахуеное название
     log: OptionLog,
-) -> Result<ExtractResult<T>, ScanProcessStringsError>
-where
-    F: FnMut(*const c_void, usize, *const c_void) -> Vec<T>,
-{
+    min_len: usize,
+    max_len: Option<usize>,
+) -> Result<ExtractResult<T>, ScanProcessStringsError> {
     //PROCESS_QUERY_INFORMATION
     let log_deref = log.deref();
     if let Some(x) = log_deref {
@@ -489,7 +485,7 @@ where
                     .map(|_| Vec::with_capacity(start_cap))
                     .collect();
                 processors.iter_mut().for_each(|item| {
-                    ret.push(item(buf.as_ptr() as _, read, base_addr));
+                    ret.push(item(buf.as_ptr() as _, read, base_addr, min_len, max_len));
                 });
                 accumulator.push(Some(ret)); //всегда some так как scan_dynamic_mem фильтрует
             }

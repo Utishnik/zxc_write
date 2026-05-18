@@ -1,6 +1,6 @@
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_ACCESS_DENIED, ERROR_INVALID_HANDLE, ERROR_INVALID_PARAMETER,
-    ERROR_PARTIAL_COPY, GetLastError, HANDLE, HLOCAL, LUID, LocalFree,
+    ERROR_PARTIAL_COPY, GetLastError, HANDLE, HLOCAL, LocalFree,
 };
 
 use windows::Win32::System::Memory::{MEMORY_BASIC_INFORMATION, PAGE_NOACCESS, VirtualQueryEx};
@@ -9,21 +9,10 @@ use windows::Win32::System::Diagnostics::Debug::{
     FORMAT_MESSAGE_ALLOCATE_BUFFER, FORMAT_MESSAGE_FROM_SYSTEM, FORMAT_MESSAGE_IGNORE_INSERTS,
     FormatMessageW,
 };
-use windows::Win32::System::Threading::{
-    GetCurrentProcess, GetProcessId, OpenProcess, OpenProcessToken, PROCESS_QUERY_INFORMATION,
-    PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_READ,
-};
+use windows::Win32::System::Threading::{GetProcessId, OpenProcess, PROCESS_QUERY_INFORMATION};
 
-use windows::Win32::Security::{
-    GetTokenInformation, LookupPrivilegeValueW, SE_PRIVILEGE_ENABLED, TOKEN_ADJUST_PRIVILEGES,
-    TOKEN_INFORMATION_CLASS, TOKEN_PRIVILEGES, TOKEN_QUERY,
-};
-
-use crate::utils::*;
-use std::ptr::null_mut;
-use windows::core::{Error, PCWSTR, PWSTR};
+use windows::core::{Error, PWSTR};
 type LPCVOID = *const core::ffi::c_void;
-use core::marker::PhantomData;
 
 pub(crate) fn get_last_error_message_array() -> Result<String, u32> {
     let error_code = unsafe { GetLastError().0 };

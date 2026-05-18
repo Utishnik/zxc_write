@@ -1,5 +1,5 @@
 use crate::utils::HandleGuard;
-use windows::Win32::Foundation::{CloseHandle, ERROR_NOT_ALL_ASSIGNED, HANDLE, LUID};
+use windows::Win32::Foundation::{ERROR_NOT_ALL_ASSIGNED, HANDLE, LUID};
 use windows::Win32::Security::{
     AdjustTokenPrivileges, LUID_AND_ATTRIBUTES, LookupPrivilegeValueW, SE_PRIVILEGE_ENABLED,
     TOKEN_ADJUST_PRIVILEGES, TOKEN_PRIVILEGES, TOKEN_QUERY,
