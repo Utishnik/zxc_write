@@ -318,10 +318,10 @@ unsafe fn get_childs_dyn_pat_cvoid(
                             "finds unicode: {}",
                             finds_uc.vec_string(DEFAULT_FORMAT_RULE)
                         );
-                        /*println!(
+                        println!(
                             "finds ascii: {}",
                             finds_ascii.vec_string(DEFAULT_FORMAT_RULE)
-                        );*/
+                        );
                     }
                     unsafe {
                         let ret_ptr = ret_ptr_clone.clone();
