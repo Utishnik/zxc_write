@@ -258,6 +258,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
         println!("cnt job {}", cnt_job);
         let jobs_vec = jobs_disp(cnt_job, pids_vec);
         let mut vec_cur: usize = 0;
+        let mut ret_len = 0;
         for jobs in jobs_vec.into_iter() {
             let len_job = jobs.clone().len();
             let an_atomic = an_atomic.clone();
@@ -315,8 +316,8 @@ unsafe fn get_childs_dyn_pat_cvoid(
                             finds_ascii,
                             finds_unicode: finds_uc,
                         };
-                        #[cfg(debug_assertions)]
-                        (*inner).finds_addr.assci.iter().for_each(|x|println!("addres ascii: {:p}",x.0));
+                        //#[cfg(debug_assertions)]
+                       // (*inner).finds_addr.assci.iter().for_each(|x|println!("addres ascii: {:p}",x.0));
                     }
                     an_atomic.fetch_add(1, Ordering::Relaxed);
                 }
@@ -330,6 +331,10 @@ unsafe fn get_childs_dyn_pat_cvoid(
             );
             */
             vec_cur += len_job;
+            ret_len += len_job;
+        }
+        unsafe{
+        ret.set_len(ret_len);
         }
         while let load = an_atomic.load(Ordering::Relaxed)
             && load != cnt_pids
@@ -471,7 +476,7 @@ fn main() {
     println!("[DEBUG] pid: {}", pid);
     unsafe {
         let res_dyn_pat: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
-            get_childs_dyn_pat_cvoid(pid, "zxc".to_string(), log);
+            get_childs_dyn_pat_cvoid(pid, "Rust".to_string(), log);
         if let Err(e) = res_dyn_pat {
             println!("[ERROR] {:?}", e);
             wait_close();
