@@ -88,7 +88,7 @@ pub struct ReadProcessMemoryResult {
 }
 
 ///# Safety
-///
+/// пропускает все строки с встречающиемся нечитаемыми символы
 pub unsafe fn extract_ascii_strings(
     buf: *const c_void,
     size: usize,
@@ -109,10 +109,10 @@ pub unsafe fn extract_ascii_strings(
             } else {
                 #[expect(clippy::missing_panics_doc, reason = "infallible")]
                 if (cur.len() >= min_len && (max_len_some && cur.len() >= max_len.unwrap()))
-                    || cur.len() >= min_len && (max_len_some && is_null_term_ascii(cur_char as u8))
+                    || cur.len() >= min_len && (!max_len_some && is_null_term_ascii(cur_char as u8))
                 {
                     extract_res.push(ExtractStr {
-                        base_addr: base_ptr.add(i - cur.len()) as _,
+                        base_addr: base_ptr.add(i - cur.chars().count()) as _,
                         str: cur.clone(),
                     });
                 }
@@ -120,10 +120,61 @@ pub unsafe fn extract_ascii_strings(
             }
         }
     }
+    //остаток
     unsafe {
         if cur.len() >= min_len {
             extract_res.push(ExtractStr {
-                base_addr: base_ptr.add(size - cur.len()) as _,
+                base_addr: base_ptr.add(size - cur.chars().count()) as _,
+                str: cur.clone(),
+            });
+        }
+    }
+    extract_res
+}
+
+///# Safety
+/// пропускает нечитаемымые символы
+pub unsafe fn extract_ascii_strings_lossy(
+    buf: *const c_void,
+    size: usize,
+    base_ptr: *const core::ffi::c_void,
+    min_len: usize,
+    max_len: Option<usize>,
+) -> Vec<ExtractStr> {
+    let mut extract_res: Vec<ExtractStr> = Vec::with_capacity(size / min_len);
+    let mut cur: String = String::default();
+    let mut cur_char: char = char::default();
+    let max_len_some: bool = max_len.is_some();
+    for i in 0..size {
+        unsafe {
+            if is_printable_char(buf.add(i) as u8) {
+                let as_char = (*(buf as *const u8).add(i)) as char;
+                cur_char = as_char;
+                cur.push(as_char);
+            } else {
+                #[expect(clippy::missing_panics_doc, reason = "infallible")]
+                if (cur.len() >= min_len && (max_len_some && cur.len() >= max_len.unwrap()))
+                    || cur.len() >= min_len && (!max_len_some && is_null_term_ascii(cur_char as u8))
+                {
+                    extract_res.push(ExtractStr {
+                        base_addr: base_ptr.add(i - cur.chars().count()) as _,
+                        str: cur.clone(),
+                    });
+                }
+                #[expect(clippy::missing_panics_doc, reason = "infallible")]
+                if (max_len_some && cur.len() >= max_len.unwrap()) && (cur.len() >= min_len)
+                    || (!max_len_some && is_null_term_ascii(cur_char as u8))
+                {
+                    cur.clear();
+                }
+            }
+        }
+    }
+    //остаток
+    unsafe {
+        if cur.len() >= min_len {
+            extract_res.push(ExtractStr {
+                base_addr: base_ptr.add(size - cur.chars().count()) as _,
                 str: cur.clone(),
             });
         }
