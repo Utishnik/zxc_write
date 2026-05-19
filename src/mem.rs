@@ -4,10 +4,6 @@ use std::ops::Deref;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::{ffi::c_void, ptr};
 
-static LOG_START_CAP: usize = 256;
-static LOG_VEC: LazyLock<Arc<Mutex<Vec<String>>>> =
-    LazyLock::new(|| Arc::new(Mutex::new(Vec::with_capacity(LOG_START_CAP))));
-
 use crate::error_hand::*;
 use windows::{
     Win32::{
@@ -89,6 +85,7 @@ pub struct ReadProcessMemoryResult {
 
 ///# Safety
 /// пропускает все строки с встречающиемся нечитаемыми символы
+#[hotpath::measure]
 pub unsafe fn extract_ascii_strings(
     buf: *const c_void,
     size: usize,
@@ -134,6 +131,7 @@ pub unsafe fn extract_ascii_strings(
 
 ///# Safety
 /// пропускает нечитаемымые символы
+#[hotpath::measure]
 pub unsafe fn extract_ascii_strings_lossy(
     buf: *const c_void,
     size: usize,
@@ -229,6 +227,7 @@ pub unsafe fn get_u8_to_buf(
 
 /// # Safety
 /// при валидных inputs
+#[hotpath::measure]
 pub unsafe fn extract_unicode_strings(
     buf: *const c_void,
     size: usize,
@@ -248,6 +247,7 @@ pub unsafe fn extract_unicode_strings(
         if is_null_utf16le(c1, c2) {
             // Null terminator — конец строки
             if cur.len() >= min_len {
+                #[expect(clippy::missing_panics_doc, reason = "infallible")]
                 let fits_max = if max_len_some {
                     cur.len() <= max_len.unwrap()
                 } else {
@@ -371,6 +371,7 @@ fn test() {
 /// # Panics
 /// если неверный конфиг
 #[must_use]
+#[hotpath::measure]
 pub fn scan_process_processors<F, T>(
     dwprocessid: u32,
     processors: &[fn(*mut c_void, usize, *const c_void) -> Vec<T>],
@@ -505,6 +506,7 @@ pub type DynProcessors<T> =
     Box<dyn FnMut(*const c_void, usize, *const c_void, usize, Option<usize>) -> Vec<T>>;
 
 #[must_use]
+#[hotpath::measure]
 pub fn scan_process_processors_mbi<T>(
     dwprocessid: u32,
     processors: &mut [DynProcessors<T>],
@@ -547,6 +549,7 @@ pub fn scan_process_processors_mbi<T>(
 }
 
 use crate::utils::HandleGuard;
+#[hotpath::measure]
 pub fn scan_dynamic_mem_custom_filter<F: Fn(MEMORY_BASIC_INFORMATION) -> bool>(
     pid: u32,
     jmp_len: usize,
@@ -618,6 +621,7 @@ pub fn scan_dynamic_mem_custom_filter<F: Fn(MEMORY_BASIC_INFORMATION) -> bool>(
     Ok(ret)
 }
 
+#[hotpath::measure]
 pub fn scan_dynamic_mem(
     pid: u32,
     jmp_len: usize,
@@ -708,6 +712,7 @@ macro_rules! gen_dispatch {
 /// Принимает срез замыканий, каждое из которых вызывается для каждого читабельного региона.
 /// Возвращает `Vec<Option<Vec<Vec<T>>>>` — по одному `Option` на регион,
 /// внутри `Some` лежит результат каждого обработчика (`Vec<T>` на обработчик)."]
+#[hotpath::measure]
 pub fn scan_process_processors_lossy_gen<T, F>(
     dwprocessid: u32,
     processors: &mut [F],
@@ -821,6 +826,7 @@ where
     Ok(accumulator)
 }
 
+#[hotpath::measure]
 pub unsafe fn write_process_memory(
     pid: u32,
     target_addr: *mut c_void,
@@ -839,7 +845,7 @@ pub unsafe fn write_process_memory(
 
     let mut old_protect = unsafe { (*mbi).Protect };
     if old_protect != PAGE_EXECUTE_READWRITE {
-        let _ = unsafe {
+        let _: () = unsafe {
             VirtualProtectEx(
                 h_process,
                 target_addr,
@@ -864,7 +870,7 @@ pub unsafe fn write_process_memory(
     if old_protect != PAGE_EXECUTE_READWRITE {
         let mut _tmp = PAGE_PROTECTION_FLAGS(0);
 
-        let _ = unsafe {
+        let _: () = unsafe {
             VirtualProtectEx(h_process, target_addr, data.len(), old_protect, &mut _tmp)?
         };
     }

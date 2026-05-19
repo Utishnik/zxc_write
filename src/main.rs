@@ -20,6 +20,7 @@ fn wait_close() {
     let _ = std::io::stdin().read_line(&mut buffer);
 }
 
+#[hotpath::measure]
 fn extract_str(dwprocessid: u32, log: OptionLog) -> Result<ExtractStrResult, ()> {
     let extract_ascii_strings_fn =
         |buf, size, base_ptr| unsafe { extract_ascii_strings(buf, size, base_ptr, 10, None) };
@@ -63,6 +64,7 @@ fn extract_str(dwprocessid: u32, log: OptionLog) -> Result<ExtractStrResult, ()>
     }
 }
 
+#[hotpath::measure]
 fn extract_str_dyn_mem(
     dwprocessid: u32,
     log: OptionLog,
@@ -242,6 +244,7 @@ impl<T> ScanStrAllResSend<T> {
     }
 }
 
+#[hotpath::measure]
 unsafe fn get_childs_dyn_pat_cvoid(
     pid: u32,
     pat: String,
@@ -366,6 +369,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
     }
 }
 
+#[hotpath::measure]
 unsafe fn get_childs_cvoid(
     pid: u32,
     log: Arc<Option<Mutex<Logger>>>,
@@ -468,6 +472,7 @@ fn shutdown_logger(log: Arc<Option<Mutex<Logger>>>) -> Result<(), ()> {
     Ok(())
 }
 
+#[hotpath::main]
 fn main() {
     let build_log = Logger::safe_builder(None, None);
     let unwrap = match build_log {

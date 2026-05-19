@@ -26,3 +26,9 @@ crossfire = "3.1.7"
 chrono = "0.4.44"
 ansi_term = "0.12.1"
 mimalloc = "0.1.50"
+hotpath = "0.16.1"
+
+[features]
+hotpath = ["hotpath/hotpath"]
+hotpath-cpu = ["hotpath/hotpath-cpu"]
+hotpath-alloc = ["hotpath/hotpath-alloc"]

@@ -42,7 +42,10 @@
     clippy::redundant_type_annotations, // не требовать убирать явные типы
 )]
 
+//alloc
+#[cfg(not(feature = "hotpath-alloc"))]
 use mimalloc::MiMalloc;
+#[cfg(not(feature = "hotpath-alloc"))]
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 
