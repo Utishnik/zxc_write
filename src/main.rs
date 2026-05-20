@@ -77,7 +77,11 @@ fn extract_str_dyn_mem(
     let extract_unicode_strings_fn = |buf, size, base_ptr, min_len, max_len| unsafe {
         extract_unicode_strings(buf, size, base_ptr, min_len, max_len)
     };
-    let scan_res = scan_dynamic_mem(dwprocessid, 48, 500_000_000, 101_704_332_083_002, None);
+
+    let scan_res;
+    hotpath::measure_block!("scan_dynamic_mem in extract_str_dyn_mem", {
+        scan_res = scan_dynamic_mem(dwprocessid, 48, 500_000_000, 101_704_332_083_002, None);
+    });//cold меньше процента
 
     if scan_res.is_err() {
         return Err(());
@@ -87,15 +91,18 @@ fn extract_str_dyn_mem(
         Box::new(extract_ascii_strings_fn) as DynProcessors<ExtractStr>,
         Box::new(extract_unicode_strings_fn) as DynProcessors<ExtractStr>,
     ];
-    let result = scan_process_processors_mbi::<ExtractStr>(
-        dwprocessid,
-        processors.as_mut(),
-        50000,
-        scan_res,
-        log,
-        min_len,
-        max_len,
-    );
+    let result;
+    hotpath::measure_block!("scan_process_processors_mbi in extract_str_dyn_mem", {
+        result = scan_process_processors_mbi::<ExtractStr>(
+            dwprocessid,
+            processors.as_mut(),
+            50000,
+            scan_res,
+            log,
+            min_len,
+            max_len,
+        );
+    });//hot
     result.ok().map_or(Err(()), |extract_result| {
         let all_ascii: Vec<_> = extract_result
             .iter()
@@ -507,6 +514,7 @@ fn main() {
             return;
         }
         let res_dyn_pat = res_dyn_pat.unwrap();
+        //todo use rayon
         let addr_only_assci: Vec<_> = res_dyn_pat
             .iter()
             .flat_map(|x| x.finds_addr.assci.clone())
@@ -515,6 +523,13 @@ fn main() {
             .iter()
             .flat_map(|x| x.finds_addr.unicode.clone())
             .collect();
+        let strs_extract: Vec<_> = res_dyn_pat
+            .iter()
+            .flat_map(|x| x.ssr.finds_ascii.clone())
+            .zip(res_dyn_pat.iter().flat_map(|x| x.ssr.finds_unicode.clone()))
+            .collect();
+        drop(res_dyn_pat);
+
         //#[cfg(debug_assertions)]
         println!(
             "addres cnt ascii: {} unicode: {}",
@@ -533,9 +548,13 @@ fn main() {
                 .collect();
             let str_assci_addr = fmt_assci_addr.vec_string(DEFAULT_FORMAT_RULE);
             let _str_unicode_addr = fmt_unicode_addr.vec_string(DEFAULT_FORMAT_RULE);
-            println!("ASSCI ADDR:  {}", str_assci_addr);
+            //println!("ASSCI ADDR:  {}", str_assci_addr);
             //println!("UNICODE ADDR:  {}", str_unicode_addr);
         }
+        let addr_tuple: Vec<_> = addr_only_assci
+            .into_iter()
+            .zip(addr_only_unicode.into_iter())
+            .collect();
     };
     unsafe {
         //let _: Result<Vec<ScanStrAllResSend::<SendableCvoidPtrMut>>, win_core::Error> =

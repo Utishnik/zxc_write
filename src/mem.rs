@@ -534,6 +534,7 @@ pub fn scan_process_processors_mbi<T>(
                 let buf = &item.buf;
                 let read = item.read;
                 let base_addr = item.mbi.BaseAddress;
+                //todo arena allocator use
                 let mut ret: Vec<Vec<T>> = (0..processors.len())
                     .map(|_| Vec::with_capacity(start_cap))
                     .collect();
