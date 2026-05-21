@@ -5,6 +5,7 @@ use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use threadpool::ThreadPool;
+use typed_arena::Arena;
 use vec_string::*;
 use windows::core as win_core;
 use zxc_write::find_proccess::*;
@@ -103,22 +104,56 @@ fn extract_str_dyn_mem(
             max_len,
         );
     }); //hot
-    result.ok().map_or(Err(()), |extract_result| {
+    result.ok().map_or(Err(()), |mut extract_result| {
+        /*
         let all_ascii: Vec<_> = extract_result
             .iter()
             .filter_map(Some)
             .flat_map(|per_proc| per_proc.iter().next())
             .flatten()
             .collect();
+        */
+        let mut all_ascii_arena = Arena::with_capacity(extract_result.len());
+        extract_result.iter_mut().for_each(|item| match item {
+            Some(x) => {
+                let get_vec: Vec<_> = x
+                    .into_vec()
+                    .iter()
+                    .flat_map(|per_proc| per_proc.iter().next())
+                    .map(|x| x.clone())
+                    .collect();
+                all_ascii_arena.alloc(get_vec);
+            }
+            None => {}
+        });
+        /*
         let all_unicode: Vec<_> = extract_result
             .iter()
             .filter_map(Some)
             .flat_map(|per_proc| per_proc.iter().nth(1))
             .flatten()
             .collect();
+        */
+        let all_unicode_arena = Arena::with_capacity(extract_result.len());
+        extract_result.iter_mut().for_each(|item| match item {
+            Some(x) => {
+                let get_vec: Vec<_> = x
+                    .into_vec()
+                    .iter()
+                    .flat_map(|per_proc| per_proc.iter().nth(1))
+                    .map(|x| x.clone())
+                    .collect();
+                all_unicode_arena.alloc(get_vec);
+            }
+            None => {}
+        });
+
+        let arena_ascii_borrow: Vec<_> = all_ascii_arena.iter_mut().map(|x| x.as_ref()).collect();
+        let arena_unicode_borrow: Vec<_> =
+            all_unicode_arena.iter_mut().map(|x| x.as_ref()).collect();
         let res = ExtractStrResult {
-            ascii: vec_flat2_owned_xz(all_ascii),
-            unicode: vec_flat2_owned_xz(all_unicode),
+            ascii: vec_flat2_owned_xz(arena_ascii_borrow),
+            unicode: vec_flat2_owned_xz(arena_unicode_borrow),
         };
         Ok(res)
     })
