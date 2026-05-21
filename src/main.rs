@@ -81,7 +81,7 @@ fn extract_str_dyn_mem(
     let scan_res;
     hotpath::measure_block!("scan_dynamic_mem in extract_str_dyn_mem", {
         scan_res = scan_dynamic_mem(dwprocessid, 48, 500_000_000, 101_704_332_083_002, None);
-    });//cold меньше процента
+    }); //cold меньше процента
 
     if scan_res.is_err() {
         return Err(());
@@ -102,7 +102,7 @@ fn extract_str_dyn_mem(
             min_len,
             max_len,
         );
-    });//hot
+    }); //hot
     result.ok().map_or(Err(()), |extract_result| {
         let all_ascii: Vec<_> = extract_result
             .iter()

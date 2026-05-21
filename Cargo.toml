@@ -27,6 +27,8 @@ chrono = "0.4.44"
 ansi_term = "0.12.1"
 mimalloc = "0.1.50"
 hotpath = "0.16.1"
+typed-arena = "2.0.2"
+allocative = "0.3.6"
 
 [features]
 hotpath = ["hotpath/hotpath"]

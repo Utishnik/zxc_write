@@ -1,8 +1,10 @@
 use crate::log::*;
 use crate::utils::OptionLog;
+use allocative::{Allocative, FlameGraphBuilder, size_of_unique_allocated_data};
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::{ffi::c_void, ptr};
+use typed_arena::Arena;
 
 use crate::error_hand::*;
 use windows::{
@@ -349,7 +351,7 @@ pub fn open_read_process(dwprocessid: u32) -> Result<HANDLE, Error> {
     }
 }
 
-pub type ExtractResult<T> = Vec<Option<Vec<Vec<T>>>>;
+pub type ExtractResult<T> = Arena<Option<Arena<Vec<T>>>>;
 
 #[test]
 fn test() {
@@ -529,21 +531,25 @@ pub fn scan_process_processors_mbi<T>(
     match h_process {
         Ok(h_process) => {
             let _guard = HandleGuard(h_process);
-            let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
+            //let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
+            let arena_accumulator = Arena::with_capacity(rpmr.len() * start_cap * processors.len());
             for item in rpmr.iter() {
                 let buf = &item.buf;
                 let read = item.read;
                 let base_addr = item.mbi.BaseAddress;
                 //todo arena allocator use
-                let mut ret: Vec<Vec<T>> = (0..processors.len())
-                    .map(|_| Vec::with_capacity(start_cap))
-                    .collect();
+                let ret_arena = Arena::with_capacity(processors.len() * start_cap);
+                //let mut ret: Vec<Vec<T>> = (0..processors.len())
+                // .map(|_| Vec::with_capacity(start_cap))
+                //.collect();
                 processors.iter_mut().for_each(|item| {
-                    ret.push(item(buf.as_ptr() as _, read, base_addr, min_len, max_len));
+                    //ret.push(item(buf.as_ptr() as _, read, base_addr, min_len, max_len));
+                    ret_arena.alloc(item(buf.as_ptr() as _, read, base_addr, min_len, max_len));
                 });
-                accumulator.push(Some(ret)); //всегда some так как scan_dynamic_mem фильтрует
+                arena_accumulator.alloc(Some(ret_arena)); //всегда some так как scan_dynamic_mem фильтрует
+                //accumulator.push(Some(ret)); //всегда some так как scan_dynamic_mem фильтрует
             }
-            Ok(accumulator)
+            Ok(arena_accumulator)
         }
         Err(e) => Err(ScanProcessStringsError::OpenProcess(e)),
     }
