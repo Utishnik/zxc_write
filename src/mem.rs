@@ -351,23 +351,36 @@ pub fn open_read_process(dwprocessid: u32) -> Result<HANDLE, Error> {
     }
 }
 
-pub type ExtractResult<T> = Arena<Option<Arena<Vec<T>>>>;
+pub type ExtractResultArena<T> = Arena<Option<Arena<Vec<T>>>>;
+pub type ExtractResult<T> = Vec<Option<Vec<Vec<T>>>>;
 
 #[test]
 fn test() {
-    let mut test: ExtractResult<u8> = (0..10).map(|_| Some(Vec::with_capacity(10))).collect();
-    let p = vec![vec![1_u8]];
-    test.push(Some(p));
+    let test = Arena::new();
+    let p = Arena::new();
+    p.alloc(vec![1_u8]);
+    test.alloc(Some(p));
 
-    let _: &u8 = test
+    let _ = test
+        .into_vec()
+        .into_iter()
+        .map(|x| x.unwrap().into_vec())
+        .collect::<Vec<_>>()
         .last()
-        .unwrap()
-        .clone()
         .unwrap()
         .first()
         .unwrap()
         .first()
         .unwrap();
+    /* .last()
+    .unwrap()
+    .clone()
+    .unwrap()
+    .into_vec()
+    .first()
+    .unwrap()
+    .first()
+    .unwrap();*/
 }
 
 /// # Panics
@@ -380,13 +393,13 @@ pub fn scan_process_processors<F, T>(
     start_cap: usize,
     stard_addr: Option<*const c_void>,
     log: Option<Logger>,
-) -> Result<ExtractResult<T>, ScanProcessStringsError> {
+) -> Result<ExtractResultArena<T>, ScanProcessStringsError> {
     //PROCESS_QUERY_INFORMATION
     //println!("[DEBUG] PID SCAN:\t{dwprocessid}"); TODO ! LOG
     if let Some(x) = log {
         x.info(move || format!("PID SCAN:\t{dwprocessid}"));
     }
-    let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
+    let mut accumulator: ExtractResultArena<T> = Arena::with_capacity(start_cap);
 
     let h_process = open_read_process(dwprocessid);
     match h_process {
@@ -412,18 +425,19 @@ pub fn scan_process_processors<F, T>(
                             let res = byte_read.map_or_else(
                                 || None,
                                 |x| {
-                                    let mut ret: Vec<Vec<T>> = (0..processors.len())
-                                        .map(|_| Vec::with_capacity(start_cap))
-                                        .collect();
-
+                                    let ret_arena =
+                                        Arena::with_capacity(processors.len() * start_cap);
+                                    /*let mut ret: Vec<Vec<T>> = (0..processors.len())
+                                    .map(|_| Vec::with_capacity(start_cap))
+                                    .collect();*/
                                     processors.iter().for_each(|item| {
-                                        ret.push(item(ptr_buf, *x, base_addr));
+                                        ret_arena.alloc(item(ptr_buf, *x, base_addr));
                                     });
 
-                                    Some(ret)
+                                    Some(ret_arena)
                                 },
                             );
-                            accumulator.push(res);
+                            accumulator.alloc(res);
                         } else {
                             return Err(ScanProcessStringsError::ReadProcessMemory);
                         }
@@ -517,7 +531,7 @@ pub fn scan_process_processors_mbi<T>(
     log: OptionLog,
     min_len: usize,
     max_len: Option<usize>,
-) -> Result<ExtractResult<T>, ScanProcessStringsError> {
+) -> Result<ExtractResultArena<T>, ScanProcessStringsError> {
     //PROCESS_QUERY_INFORMATION
     let log_deref = log.deref();
     if let Some(x) = log_deref {

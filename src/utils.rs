@@ -2,6 +2,7 @@ use crate::log::*;
 use core::marker::PhantomData;
 use std::ffi::c_void;
 use std::sync::{Arc, Mutex};
+use typed_arena::Arena;
 use windows::Win32::Foundation::*;
 
 ///# Safety
@@ -114,3 +115,7 @@ pub struct SyncLogger(pub Logger);
 unsafe impl Sync for SyncLogger {}
 
 pub type OptionLog = Arc<Option<Mutex<Logger>>>;
+
+pub fn make_vec_to_borrow_arena<T: Clone>(arena: &mut Arena<T>) -> Vec<T> {
+    arena.iter_mut().map(|x| x.clone()).collect()
+}

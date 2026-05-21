@@ -116,8 +116,7 @@ fn extract_str_dyn_mem(
         let mut all_ascii_arena = Arena::with_capacity(extract_result.len());
         extract_result.iter_mut().for_each(|item| match item {
             Some(x) => {
-                let get_vec: Vec<_> = x
-                    .into_vec()
+                let get_vec: Vec<_> = make_vec_to_borrow_arena(x)
                     .iter()
                     .flat_map(|per_proc| per_proc.iter().next())
                     .map(|x| x.clone())
@@ -134,11 +133,10 @@ fn extract_str_dyn_mem(
             .flatten()
             .collect();
         */
-        let all_unicode_arena = Arena::with_capacity(extract_result.len());
+        let mut all_unicode_arena = Arena::with_capacity(extract_result.len());
         extract_result.iter_mut().for_each(|item| match item {
             Some(x) => {
-                let get_vec: Vec<_> = x
-                    .into_vec()
+                let get_vec: Vec<_> = make_vec_to_borrow_arena(x)
                     .iter()
                     .flat_map(|per_proc| per_proc.iter().nth(1))
                     .map(|x| x.clone())
@@ -148,9 +146,14 @@ fn extract_str_dyn_mem(
             None => {}
         });
 
-        let arena_ascii_borrow: Vec<_> = all_ascii_arena.iter_mut().map(|x| x.as_ref()).collect();
-        let arena_unicode_borrow: Vec<_> =
-            all_unicode_arena.iter_mut().map(|x| x.as_ref()).collect();
+        let arena_ascii_borrow: Vec<_> = all_ascii_arena
+            .iter_mut()
+            .map(|x| x as &Vec<ExtractStr>)
+            .collect();
+        let arena_unicode_borrow: Vec<_> = all_unicode_arena
+            .iter_mut()
+            .map(|x| x as &Vec<ExtractStr>)
+            .collect();
         let res = ExtractStrResult {
             ascii: vec_flat2_owned_xz(arena_ascii_borrow),
             unicode: vec_flat2_owned_xz(arena_unicode_borrow),
