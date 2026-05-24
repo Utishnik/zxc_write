@@ -25,7 +25,7 @@ getrandom = "0.3"
 crossfire = "3.1.7"
 chrono = "0.4.44"
 ansi_term = "0.12.1"
-mimalloc = "0.1.50"
+mimalloc = {version = "0.1.50", features = ["secure"] }
 hotpath = "0.16.1"
 typed-arena = "2.0.2"
 allocative = "0.3.6"

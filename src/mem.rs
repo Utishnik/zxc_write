@@ -540,12 +540,19 @@ pub fn scan_process_processors_mbi<T>(
             ok_guard.untrack_info(move || format!("PID SCAN:\t{dwprocessid}"));
         }
     }
-    drop(log);
     let h_process = open_read_process(dwprocessid);
     match h_process {
         Ok(h_process) => {
             let _guard = HandleGuard(h_process);
             //let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
+            
+            if let Some(x) = log_deref {
+                let guard = x.lock();
+                if let Ok(ok_guard) = guard {
+                    let len = rpmr.len() * start_cap * processors.len();
+                    //ok_guard.untrack_error(move || format!("alloc bytes: {}",len) );
+                }
+            }
             let arena_accumulator = Arena::with_capacity(rpmr.len() * start_cap * processors.len());
             for item in rpmr.iter() {
                 let buf = &item.buf;
