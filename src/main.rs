@@ -121,16 +121,17 @@ fn extract_str_dyn_mem(
             .collect();
         */
         let mut all_ascii_arena = Arena::with_capacity(extract_result.len());
-        extract_result.iter_mut().for_each(|item| match item {
-            Some(x) => {
-                let get_vec: Vec<_> = make_vec_to_borrow_arena(x)
-                    .iter()
-                    .flat_map(|per_proc| per_proc.iter().next())
-                    .map(|x| x.clone())
-                    .collect();
-                all_ascii_arena.alloc(get_vec);
+        extract_result.iter_mut().for_each(|item| {
+            if let Some(x) = item {
+                {
+                    let get_vec: Vec<_> = make_vec_to_borrow_arena(x)
+                        .iter()
+                        .flat_map(|per_proc| per_proc.iter().next())
+                        .map(|x| x.clone())
+                        .collect();
+                    all_ascii_arena.alloc(get_vec);
+                }
             }
-            None => {}
         });
         /*
         let all_unicode: Vec<_> = extract_result

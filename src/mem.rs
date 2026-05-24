@@ -549,17 +549,17 @@ pub fn scan_process_processors_mbi<T>(
             if let Some(x) = log_deref {
                 let guard = x.lock();
                 if let Ok(ok_guard) = guard {
-                    let len = rpmr.len() * start_cap * processors.len();
+                    let len = start_cap + rpmr.len() * processors.len();
                     ok_guard.untrack_error(move || format!("alloc bytes: {}", len));
                 }
             }
-            let arena_accumulator = Arena::with_capacity(rpmr.len() * start_cap * processors.len());
-            for item in rpmr.iter() {
+            let arena_accumulator = Arena::with_capacity(start_cap + rpmr.len() * processors.len());
+            for item in rpmr.into_iter() {
                 let buf = &item.buf;
                 let read = item.read;
                 let base_addr = item.mbi.BaseAddress;
                 //todo arena allocator use
-                let ret_arena = Arena::with_capacity(processors.len() * start_cap);
+                let ret_arena = Arena::with_capacity(processors.len() + start_cap);
                 //let mut ret: Vec<Vec<T>> = (0..processors.len())
                 // .map(|_| Vec::with_capacity(start_cap))
                 //.collect();
@@ -569,6 +569,7 @@ pub fn scan_process_processors_mbi<T>(
                 });
                 arena_accumulator.alloc(Some(ret_arena)); //всегда some так как scan_dynamic_mem фильтрует
                 //accumulator.push(Some(ret)); //всегда some так как scan_dynamic_mem фильтрует
+                drop(item); //дроп тут важен чтоб не было потребелние памяти равно 2*(память процесса + оверхед)
             }
             Ok(arena_accumulator)
         }
