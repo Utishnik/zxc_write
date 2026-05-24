@@ -545,12 +545,12 @@ pub fn scan_process_processors_mbi<T>(
         Ok(h_process) => {
             let _guard = HandleGuard(h_process);
             //let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
-            
+
             if let Some(x) = log_deref {
                 let guard = x.lock();
                 if let Ok(ok_guard) = guard {
                     let len = rpmr.len() * start_cap * processors.len();
-                    //ok_guard.untrack_error(move || format!("alloc bytes: {}",len) );
+                    ok_guard.untrack_error(move || format!("alloc bytes: {}", len));
                 }
             }
             let arena_accumulator = Arena::with_capacity(rpmr.len() * start_cap * processors.len());
@@ -656,6 +656,7 @@ pub fn scan_dynamic_mem(
     max_cap: usize,
     max_addr_offset: usize,
     start_addres: Option<*const c_void>,
+    log: OptionLog,
 ) -> windows::core::Result<Vec<ReadProcessMemoryResult>> {
     let mut ret: Vec<ReadProcessMemoryResult> = Vec::new();
     let h_process =
@@ -663,6 +664,8 @@ pub fn scan_dynamic_mem(
     let _guard = HandleGuard(h_process);
     let mut addr: *const std::ffi::c_void = start_addres.unwrap_or(ptr::null());
     let mut check_addr: *const c_void = addr;
+    let mut trace_size: usize = 0;
+    let log_deref = log.deref();
 
     loop {
         let mut mbi = MEMORY_BASIC_INFORMATION::default();
@@ -704,6 +707,15 @@ pub fn scan_dynamic_mem(
             mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE && is_readwrite(mbi.Protect);
         if is_dynamic {
             let size = mbi.RegionSize.min(max_cap);
+            if let Some(x) = log_deref {
+                let guard = x.lock();
+                if let Ok(ok_guard) = guard
+                    && size > 10_000_000
+                {
+                    ok_guard.untrack_warning(move || format!("size: {size}"));
+                }
+            }
+            trace_size += size;
             let mut buf = vec![0_u8; size];
             let mut read = 0_usize;
             let ok = unsafe {
@@ -723,6 +735,15 @@ pub fn scan_dynamic_mem(
         }
 
         addr = next as *const _;
+    }
+
+    if let Some(x) = log_deref {
+        let guard = x.lock();
+        if let Ok(ok_guard) = guard
+            && trace_size > 100_000_000
+        {
+            ok_guard.untrack_error(move || format!("size: {trace_size}"));
+        }
     }
 
     Ok(ret)

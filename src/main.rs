@@ -81,7 +81,14 @@ fn extract_str_dyn_mem(
 
     let scan_res;
     hotpath::measure_block!("scan_dynamic_mem in extract_str_dyn_mem", {
-        scan_res = scan_dynamic_mem(dwprocessid, 48, 500_000_000, 101_704_332_083_002, None);//тут кажется может проблема быть
+        scan_res = scan_dynamic_mem(
+            dwprocessid,
+            48,
+            500_000_000,
+            101_704_332_083_002,
+            None,
+            log.clone(),
+        ); //тут кажется может проблема быть
     }); //cold меньше процента
 
     if scan_res.is_err() {
@@ -579,11 +586,23 @@ fn main() {
             println!("address print:");
             let fmt_assci_addr: Vec<_> = addr_only_assci
                 .iter()
-                .map(|x|  if x.0.is_null() { "empty".to_string() } else { format!("{:p}",x.0) })
+                .map(|x| {
+                    if x.0.is_null() {
+                        "empty".to_string()
+                    } else {
+                        format!("{:p}", x.0)
+                    }
+                })
                 .collect();
             let fmt_unicode_addr: Vec<_> = addr_only_unicode
                 .iter()
-                .map(|x| if x.0.is_null() { "".to_string() } else { format!("{:p}", x.0) })
+                .map(|x| {
+                    if x.0.is_null() {
+                        "".to_string()
+                    } else {
+                        format!("{:p}", x.0)
+                    }
+                })
                 .collect();
             let str_assci_addr = fmt_assci_addr.vec_string(DEFAULT_FORMAT_RULE);
             let _str_unicode_addr = fmt_unicode_addr.vec_string(DEFAULT_FORMAT_RULE);
