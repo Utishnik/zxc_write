@@ -399,7 +399,7 @@ pub fn scan_process_processors<F, T>(
     if let Some(x) = log {
         x.info(move || format!("PID SCAN:\t{dwprocessid}"));
     }
-    let mut accumulator: ExtractResultArena<T> = Arena::with_capacity(start_cap);
+    let accumulator: ExtractResultArena<T> = Arena::with_capacity(start_cap);
 
     let h_process = open_read_process(dwprocessid);
     match h_process {

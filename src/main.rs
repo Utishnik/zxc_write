@@ -576,13 +576,14 @@ fn main() {
         );
         // #[cfg(debug_assertions)]
         {
+            println!("address print:");
             let fmt_assci_addr: Vec<_> = addr_only_assci
                 .iter()
-                .map(|x| format!("{:p}", x.0))
+                .map(|x|  if x.0.is_null() { "empty".to_string() } else { format!("{:p}",x.0) })
                 .collect();
             let fmt_unicode_addr: Vec<_> = addr_only_unicode
                 .iter()
-                .map(|x| format!("{:p}", x.0))
+                .map(|x| if x.0.is_null() { "".to_string() } else { format!("{:p}", x.0) })
                 .collect();
             let str_assci_addr = fmt_assci_addr.vec_string(DEFAULT_FORMAT_RULE);
             let _str_unicode_addr = fmt_unicode_addr.vec_string(DEFAULT_FORMAT_RULE);
