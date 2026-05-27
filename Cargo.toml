@@ -34,3 +34,8 @@ allocative = "0.3.6"
 hotpath = ["hotpath/hotpath"]
 hotpath-cpu = ["hotpath/hotpath-cpu"]
 hotpath-alloc = ["hotpath/hotpath-alloc"]
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1

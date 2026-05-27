@@ -414,24 +414,24 @@ unsafe fn get_childs_dyn_pat_cvoid(
                     let finds_uc: Vec<String> = find_res
                         .unicode
                         .iter()
-                        .filter(|x| x.str.find(&pat_clone).is_some())
+                        .filter(|x| x.str.contains(&pat_clone))
                         .map(|x| x.str.clone())
                         .collect();
                     #[allow(clippy::search_is_some)]
                     let finds_ascii: Vec<String> = find_res
                         .ascii
                         .iter()
-                        .filter(|x| x.str.find(&pat_clone).is_some())
+                        .filter(|x| x.str.contains(&pat_clone))
                         .map(|x| x.str.clone())
                         .collect();
 
                     let finds_addr = unsafe {
                         get_base_addr_all_send_pat_filter::<SendableCvoidPtrMut>(&find_res, |x| {
-                            x.find(&pat_clone).is_some()
+                            x.contains(&pat_clone)
                         })
                     };
                     //бля адресса нефильтрую
-                    #[cfg(debug_assertions)]
+                    //#[cfg(debug_assertions)]
                     {
                         println!(
                             "finds unicode: len: {}",
