@@ -164,12 +164,17 @@ fn extract_str_dyn_mem(
             .map(|x| x as &Vec<ExtractStr>)
             .collect();
         let log_deref = log.deref();
-        if let Some(x) = log_deref{
+        if let Some(x) = log_deref {
             let guard = x.lock();
             if let Ok(ok_guard) = guard {
                 let len_unicode = arena_unicode_borrow.len();
                 let len_ascii = arena_ascii_borrow.len();
-                ok_guard.untrack_info(move || format!("arena unicode len: {} , arena_ascii: {}",len_unicode,len_ascii));
+                ok_guard.untrack_info(move || {
+                    format!(
+                        "arena unicode len: {} , arena_ascii: {}",
+                        len_unicode, len_ascii
+                    )
+                });
             }
         }
         let res = ExtractStrResult {
@@ -238,6 +243,61 @@ unsafe fn get_base_addr_unicode_send<T>(find_res: &ExtractStrResult) -> Vec<Send
         .collect::<Vec<_>>()
 }
 
+unsafe fn get_base_addr_all_send<T>(find_res: &ExtractStrResult) -> BaseAddrResSend<T>
+//where T: Clone,
+{
+    let res_ascii = unsafe { get_base_addr_assci_send(find_res) };
+    let res_unicode = unsafe { get_base_addr_unicode_send(find_res) };
+    BaseAddrResSend::<T> {
+        assci: res_ascii,
+        unicode: res_unicode,
+    }
+}
+
+///
+
+unsafe fn get_base_addr_assci_send_pat_filter<T>(
+    find_res: &ExtractStrResult,
+    pat: impl Fn(&String) -> bool,
+) -> Vec<SendablePtr<T>>
+//where T: Clone,
+{
+    find_res
+        .ascii
+        .iter()
+        .filter(|&x| pat(&x.str))
+        .map(|x| SendablePtr(x.base_addr as *const T))
+        .collect::<Vec<_>>()
+}
+
+unsafe fn get_base_addr_unicode_send_pat_filter<T>(
+    find_res: &ExtractStrResult,
+    pat: impl Fn(&String) -> bool,
+) -> Vec<SendablePtr<T>>
+//where T: Clone,
+{
+    find_res
+        .unicode
+        .iter()
+        .filter(|&x| pat(&x.str))
+        .map(|x| SendablePtr(x.base_addr as *const T))
+        .collect::<Vec<_>>()
+}
+
+unsafe fn get_base_addr_all_send_pat_filter<T>(
+    find_res: &ExtractStrResult,
+    pat: impl Fn(&String) -> bool + Clone,
+) -> BaseAddrResSend<T>
+//where T: Clone,
+{
+    let res_ascii = unsafe { get_base_addr_assci_send_pat_filter(find_res, pat.clone()) };
+    let res_unicode = unsafe { get_base_addr_unicode_send_pat_filter(find_res, pat) };
+    BaseAddrResSend::<T> {
+        assci: res_ascii,
+        unicode: res_unicode,
+    }
+}
+
 #[derive(Clone)]
 struct BaseAddrResSend<T>
 //where T: Clone,
@@ -257,17 +317,6 @@ fn get_base_addr_all(find_res: &ExtractStrResult) -> BaseAddrRes {
     let res_ascii = get_base_addr_assci(find_res);
     let res_unicode = get_base_addr_unicode(find_res);
     BaseAddrRes {
-        assci: res_ascii,
-        unicode: res_unicode,
-    }
-}
-
-unsafe fn get_base_addr_all_send<T>(find_res: &ExtractStrResult) -> BaseAddrResSend<T>
-//where T: Clone,
-{
-    let res_ascii = unsafe { get_base_addr_assci_send(find_res) };
-    let res_unicode = unsafe { get_base_addr_unicode_send(find_res) };
-    BaseAddrResSend::<T> {
         assci: res_ascii,
         unicode: res_unicode,
     }
@@ -376,19 +425,21 @@ unsafe fn get_childs_dyn_pat_cvoid(
                         .map(|x| x.str.clone())
                         .collect();
 
-                    let finds_addr =
-                        unsafe { get_base_addr_all_send::<SendableCvoidPtrMut>(&find_res) };
+                    let finds_addr = unsafe {
+                        get_base_addr_all_send_pat_filter::<SendableCvoidPtrMut>(&find_res, |x| {
+                            x.find(&pat_clone).is_some()
+                        })
+                    };
+                    //бля адресса нефильтрую
                     #[cfg(debug_assertions)]
                     {
                         println!(
-                            "finds unicode: {}\tlen: {}",
-                            finds_uc.vec_string(DEFAULT_FORMAT_RULE),
+                            "finds unicode: len: {}",
                             finds_uc.vec_string(DEFAULT_FORMAT_RULE).len(),
                         );
                         println!(
-                            "finds ascii: {}\tlen: {}",
-                            finds_ascii.vec_string(DEFAULT_FORMAT_RULE),
-                            finds_uc.vec_string(DEFAULT_FORMAT_RULE).len(),
+                            "finds ascii: len: {}",
+                            finds_ascii.vec_string(DEFAULT_FORMAT_RULE).len(),
                         );
                     }
                     unsafe {
@@ -570,7 +621,7 @@ fn main() {
     println!("[DEBUG] pid: {}", pid);
     unsafe {
         let res_dyn_pat: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
-            get_childs_dyn_pat_cvoid(pid, "111122223333333344444".to_string(), log, 20, Some(50));
+            get_childs_dyn_pat_cvoid(pid, "zxc_write".to_string(), log, 0, None);
         if let Err(e) = res_dyn_pat {
             println!("[ERROR] {:?}", e);
             wait_close();
@@ -623,9 +674,14 @@ fn main() {
                 })
                 .collect();
             let str_assci_addr = fmt_assci_addr.vec_string(DEFAULT_FORMAT_RULE);
-            let _str_unicode_addr = fmt_unicode_addr.vec_string(DEFAULT_FORMAT_RULE);
-            //println!("ASSCI ADDR:  {}", str_assci_addr);
-            //println!("UNICODE ADDR:  {}", str_unicode_addr);
+            let str_unicode_addr = fmt_unicode_addr.vec_string(DEFAULT_FORMAT_RULE);
+            println!("ASSCI ADDR:  {}", str_assci_addr);
+            println!("UNICODE ADDR:  {}", str_unicode_addr);
+            println!("strs: ");
+            for item in strs_extract {
+                println!("ascii: {}", item.0);
+                println!("unicode: {}", item.1);
+            }
         }
         let addr_tuple: Vec<_> = addr_only_assci
             .into_iter()

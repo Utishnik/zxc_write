@@ -1,6 +1,7 @@
 use crate::log::*;
 use crate::utils::OptionLog;
 use allocative::{Allocative, FlameGraphBuilder, size_of_unique_allocated_data};
+use std::cmp::max;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::{ffi::c_void, ptr};
@@ -95,7 +96,7 @@ pub unsafe fn extract_ascii_strings(
     min_len: usize,
     max_len: Option<usize>,
 ) -> Vec<ExtractStr> {
-    let mut extract_res: Vec<ExtractStr> = Vec::with_capacity(size / min_len);
+    let mut extract_res: Vec<ExtractStr> = Vec::with_capacity(size / max(min_len, 1));
     let mut cur: String = String::default();
     let mut cur_char: char = char::default();
     let max_len_some: bool = max_len.is_some();
@@ -237,7 +238,7 @@ pub unsafe fn extract_unicode_strings(
     min_len: usize,
     max_len: Option<usize>,
 ) -> Vec<ExtractStr> {
-    let mut extract_res: Vec<ExtractStr> = Vec::with_capacity(size / 2 / min_len);
+    let mut extract_res: Vec<ExtractStr> = Vec::with_capacity(size / 2 / max(min_len, 1));
     let mut cur: String = String::default();
     let mut start_offset: usize = 0;
     let max_len_some: bool = max_len.is_some();
@@ -550,7 +551,7 @@ pub fn scan_process_processors_mbi<T>(
                 let guard = x.lock();
                 if let Ok(ok_guard) = guard {
                     let len = start_cap + rpmr.len() * processors.len();
-                    ok_guard.untrack_error(move || format!("alloc bytes: {}", len));
+                    ok_guard.untrack_warning(move || format!("alloc bytes: {}", len));
                 }
             }
             let arena_accumulator = Arena::with_capacity(start_cap + rpmr.len() * processors.len());
@@ -743,7 +744,7 @@ pub fn scan_dynamic_mem(
         if let Ok(ok_guard) = guard
             && trace_size > 100_000_000
         {
-            ok_guard.untrack_error(move || format!("size: {trace_size}"));
+            ok_guard.untrack_warning(move || format!("size: {trace_size}"));
         }
     }
 
@@ -844,7 +845,7 @@ where
             reg_size
         };
 
-        let mut buffer: Vec<u8> = vec![0u8; read_size];
+        let mut buffer: Vec<u8> = vec![0_u8; read_size];
         let mut bytes_read: usize = 0;
 
         let read_ok = unsafe {
