@@ -126,7 +126,7 @@ fn extract_str_dyn_mem(
                 {
                     let get_vec: Vec<_> = make_vec_to_borrow_arena(x)
                         .iter()
-                        .flat_map(|per_proc| per_proc.iter().next())
+                        .flat_map(|per_proc| per_proc.first())
                         .cloned()
                         .collect();
                     all_ascii_arena.alloc(get_vec);
@@ -147,7 +147,7 @@ fn extract_str_dyn_mem(
                 {
                     let get_vec: Vec<_> = make_vec_to_borrow_arena(x)
                         .iter()
-                        .flat_map(|per_proc| per_proc.iter().nth(1))
+                        .flat_map(|per_proc| per_proc.get(1))
                         .cloned()
                         .collect();
                     all_unicode_arena.alloc(get_vec);
@@ -163,6 +163,15 @@ fn extract_str_dyn_mem(
             .iter_mut()
             .map(|x| x as &Vec<ExtractStr>)
             .collect();
+        let log_deref = log.deref();
+        if let Some(x) = log_deref{
+            let guard = x.lock();
+            if let Ok(ok_guard) = guard {
+                let len_unicode = arena_unicode_borrow.len();
+                let len_ascii = arena_ascii_borrow.len();
+                ok_guard.untrack_info(move || format!("arena unicode len: {} , arena_ascii: {}",len_unicode,len_ascii));
+            }
+        }
         let res = ExtractStrResult {
             ascii: vec_flat2_owned_xz(arena_ascii_borrow),
             unicode: vec_flat2_owned_xz(arena_unicode_borrow),
@@ -372,12 +381,14 @@ unsafe fn get_childs_dyn_pat_cvoid(
                     #[cfg(debug_assertions)]
                     {
                         println!(
-                            "finds unicode: {}",
-                            finds_uc.vec_string(DEFAULT_FORMAT_RULE)
+                            "finds unicode: {}\tlen: {}",
+                            finds_uc.vec_string(DEFAULT_FORMAT_RULE),
+                            finds_uc.vec_string(DEFAULT_FORMAT_RULE).len(),
                         );
                         println!(
-                            "finds ascii: {}",
-                            finds_ascii.vec_string(DEFAULT_FORMAT_RULE)
+                            "finds ascii: {}\tlen: {}",
+                            finds_ascii.vec_string(DEFAULT_FORMAT_RULE),
+                            finds_uc.vec_string(DEFAULT_FORMAT_RULE).len(),
                         );
                     }
                     unsafe {
@@ -475,10 +486,15 @@ unsafe fn get_childs_cvoid(
                     let finds_unicode = find_res.unicode.iter().map(|x| x.str.clone()).collect();
                     #[cfg(debug_assertions)]
                     {
-                        println!("Ascii:\t{}", find_res.ascii.vec_string(DEFAULT_FORMAT_RULE));
                         println!(
-                            "Unicode:\t{}",
-                            find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
+                            "Ascii:\t{}\tlen: {}",
+                            find_res.ascii.vec_string(DEFAULT_FORMAT_RULE),
+                            find_res.ascii.vec_string(DEFAULT_FORMAT_RULE).len()
+                        );
+                        println!(
+                            "Unicode:\t{}\tlen: {}",
+                            find_res.unicode.vec_string(DEFAULT_FORMAT_RULE),
+                            find_res.unicode.vec_string(DEFAULT_FORMAT_RULE).len(),
                         );
                     }
                     unsafe {
@@ -590,7 +606,7 @@ fn main() {
                 .iter()
                 .map(|x| {
                     if x.0.is_null() {
-                        "empty".to_string()
+                        "".to_string()
                     } else {
                         format!("{:p}", x.0)
                     }
