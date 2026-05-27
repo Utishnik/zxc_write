@@ -106,7 +106,7 @@ fn extract_str_dyn_mem(
             processors.as_mut(),
             50000,
             scan_res,
-            log,
+            log.clone(),
             min_len,
             max_len,
         );
