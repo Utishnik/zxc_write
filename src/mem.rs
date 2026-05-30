@@ -97,7 +97,7 @@ pub unsafe fn extract_ascii_strings(
     max_len: Option<usize>,
 ) -> Vec<ExtractStr> {
     //let mut extract_res: Vec<ExtractStr> = Vec::with_capacity(size / max(min_len, 1));
-    let mut extract_res: Vec<ExtractStr> = Vec::new(); 
+    let mut extract_res: Vec<ExtractStr> = Vec::new();
     let mut cur: String = String::default();
     let mut cur_char: char = char::default();
     let max_len_some: bool = max_len.is_some();
@@ -143,7 +143,7 @@ pub unsafe fn extract_ascii_strings_lossy(
     min_len: usize,
     max_len: Option<usize>,
 ) -> Vec<ExtractStr> {
-    let mut extract_res: Vec<ExtractStr> = Vec::with_capacity(size /  max(min_len, 1));
+    let mut extract_res: Vec<ExtractStr> = Vec::with_capacity(size / max(min_len, 1));
     let mut cur: String = String::default();
     let mut cur_char: char = char::default();
     let max_len_some: bool = max_len.is_some();
@@ -240,7 +240,7 @@ pub unsafe fn extract_unicode_strings(
     max_len: Option<usize>,
 ) -> Vec<ExtractStr> {
     //let mut extract_res: Vec<ExtractStr> = Vec::with_capacity(size / 2 / max(min_len, 1));
-    let mut extract_res: Vec<ExtractStr> = Vec::new();  
+    let mut extract_res: Vec<ExtractStr> = Vec::new();
     let mut cur: String = String::default();
     let mut start_offset: usize = 0;
     let max_len_some: bool = max_len.is_some();

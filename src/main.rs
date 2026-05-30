@@ -83,7 +83,7 @@ fn extract_str_dyn_mem(
     hotpath::measure_block!("scan_dynamic_mem in extract_str_dyn_mem", {
         scan_res = scan_dynamic_mem(
             dwprocessid,
-            48,
+            1,
             500_000_000,
             101_704_332_083_002,
             None,
@@ -254,8 +254,6 @@ unsafe fn get_base_addr_all_send<T>(find_res: &ExtractStrResult) -> BaseAddrResS
     }
 }
 
-///
-
 unsafe fn get_base_addr_assci_send_pat_filter<T>(
     find_res: &ExtractStrResult,
     pat: impl Fn(&String) -> bool,
@@ -403,7 +401,8 @@ unsafe fn get_childs_dyn_pat_cvoid(
             pool.execute(move || {
                 for item in jobs.into_iter().enumerate() {
                     let pool_log_clone = log_clone.clone();
-                    let find_res = extract_str_dyn_mem(item.1, pool_log_clone, min_len, max_len);
+                    let find_res =
+                        extract_str_dyn_mem(item.1, pool_log_clone.clone(), min_len, max_len);
                     if find_res.is_err() {
                         println!("find strings failed: None");
                         return;
@@ -433,14 +432,41 @@ unsafe fn get_childs_dyn_pat_cvoid(
                     //бля адресса нефильтрую
                     //#[cfg(debug_assertions)]
                     {
-                        println!(
-                            "finds unicode: len: {}",
-                            finds_uc.vec_string(DEFAULT_FORMAT_RULE).len(),
-                        );
-                        println!(
-                            "finds ascii: len: {}",
-                            finds_ascii.vec_string(DEFAULT_FORMAT_RULE).len(),
-                        );
+                        let deref_log = pool_log_clone.deref().as_ref();
+                        if let Some(x) = deref_log
+                            && let Ok(guard) = x.lock()
+                        {
+                            let clone_finds_ascii = finds_ascii.clone();
+                            guard.untrack_info(move || {
+                                format!(
+                                    "finds ascii: len: {}",
+                                    clone_finds_ascii.vec_string(DEFAULT_FORMAT_RULE).len(),
+                                )
+                            });
+
+                            let clone_finds_uc = finds_uc.clone();
+                            guard.untrack_info(move || {
+                                format!(
+                                    "finds unicode: len: {}",
+                                    clone_finds_uc.vec_string(DEFAULT_FORMAT_RULE).len(),
+                                )
+                            });
+
+                            let clone_finds_ascii = finds_ascii.clone();
+                            guard.untrack_info(move || {
+                                format!(
+                                    "Ascii:\t{}",
+                                    clone_finds_ascii.vec_string(DEFAULT_FORMAT_RULE),
+                                )
+                            });
+                            let clone_finds_uc = finds_uc.clone();
+                            guard.untrack_info(move || {
+                                format!(
+                                    "Unicode:\t{}",
+                                    clone_finds_uc.vec_string(DEFAULT_FORMAT_RULE),
+                                )
+                            });
+                        }
                     }
                     unsafe {
                         let ret_ptr = ret_ptr_clone.clone();
@@ -621,7 +647,7 @@ fn main() {
     println!("[DEBUG] pid: {}", pid);
     unsafe {
         let res_dyn_pat: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
-            get_childs_dyn_pat_cvoid(pid, "zxc_write".to_string(), log, 1, Some(14000));
+            get_childs_dyn_pat_cvoid(pid, "zxc".to_string(), log, 1, Some(14000));
         if let Err(e) = res_dyn_pat {
             println!("[ERROR] {:?}", e);
             wait_close();
