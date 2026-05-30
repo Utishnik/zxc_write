@@ -409,18 +409,23 @@ unsafe fn get_childs_dyn_pat_cvoid(
                     }
                     let find_res = find_res.unwrap();
 
+                    //от memchr конечно профита нет но пофиг
                     #[allow(clippy::search_is_some)]
                     let finds_uc: Vec<String> = find_res
                         .unicode
                         .iter()
-                        .filter(|x| memchr::memmem::find(x.str.as_bytes(), pat_clone.as_bytes()).is_some() )
+                        .filter(|x| {
+                            memchr::memmem::find(x.str.as_bytes(), pat_clone.as_bytes()).is_some()
+                        })
                         .map(|x| x.str.clone())
                         .collect();
                     #[allow(clippy::search_is_some)]
                     let finds_ascii: Vec<String> = find_res
                         .ascii
                         .iter()
-                        .filter(|x| memchr::memmem::find(x.str.as_bytes(), pat_clone.as_bytes()).is_some())
+                        .filter(|x| {
+                            memchr::memmem::find(x.str.as_bytes(), pat_clone.as_bytes()).is_some()
+                        })
                         .map(|x| x.str.clone())
                         .collect();
 
@@ -451,7 +456,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
                                     clone_finds_uc.vec_string(DEFAULT_FORMAT_RULE).len(),
                                 )
                             });
-
+                            /*
                             let clone_finds_ascii = finds_ascii.clone();
                             guard.untrack_info(move || {
                                 format!(
@@ -466,6 +471,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
                                     clone_finds_uc.vec_string(DEFAULT_FORMAT_RULE),
                                 )
                             });
+                            */
                         }
                     }
                     unsafe {
@@ -663,10 +669,13 @@ fn main() {
             .iter()
             .flat_map(|x| x.finds_addr.unicode.clone())
             .collect();
-        let strs_extract: Vec<_> = res_dyn_pat
+        let extract_ascii_str: Vec<_> = res_dyn_pat
             .iter()
             .flat_map(|x| x.ssr.finds_ascii.clone())
-            .zip(res_dyn_pat.iter().flat_map(|x| x.ssr.finds_unicode.clone()))
+            .collect();
+        let extract_unicode_str: Vec<_> = res_dyn_pat
+            .iter()
+            .flat_map(|x| x.ssr.finds_unicode.clone())
             .collect();
         drop(res_dyn_pat);
 
@@ -703,10 +712,20 @@ fn main() {
             let str_unicode_addr = fmt_unicode_addr.vec_string(DEFAULT_FORMAT_RULE);
             println!("ASSCI ADDR:  {}", str_assci_addr);
             println!("UNICODE ADDR:  {}", str_unicode_addr);
-            println!("strs: ");
-            for item in strs_extract {
-                println!("ascii: {}", item.0);
-                println!("unicode: {}", item.1);
+            println!("\n\nstrs: ");
+            for item in extract_ascii_str.iter() {
+                if item.len() < 64 {
+                    println!("ascii: {}", item);
+                } else {
+                    println!("ascii: {} ...", item.get(0..63).unwrap_or_default());
+                }
+            }
+            for item in extract_unicode_str.iter() {
+                if item.len() < 64 {
+                    println!("unicode: {}", item);
+                } else {
+                    println!("unicode: {} ...", item.get(0..63).unwrap_or_default());
+                }
             }
         }
         let addr_tuple: Vec<_> = addr_only_assci

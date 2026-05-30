@@ -1,12 +1,12 @@
 use crate::log::*;
 use crate::utils::OptionLog;
 use allocative::{Allocative, FlameGraphBuilder, size_of_unique_allocated_data};
+use memchr::memchr;
 use std::cmp::max;
 use std::ops::Deref;
 use std::sync::{Arc, LazyLock, Mutex};
 use std::{ffi::c_void, ptr};
 use typed_arena::Arena;
-use memchr::memchr;
 
 use crate::error_hand::*;
 use windows::{
