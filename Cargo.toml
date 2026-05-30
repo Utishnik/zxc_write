@@ -29,6 +29,7 @@ mimalloc = {version = "0.1.50", features = ["secure"] }
 hotpath = "0.16.1"
 typed-arena = "2.0.2"
 allocative = "0.3.6"
+memchr = "2.8.1"
 
 [features]
 hotpath = ["hotpath/hotpath"]

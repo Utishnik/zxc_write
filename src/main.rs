@@ -413,20 +413,20 @@ unsafe fn get_childs_dyn_pat_cvoid(
                     let finds_uc: Vec<String> = find_res
                         .unicode
                         .iter()
-                        .filter(|x| x.str.contains(&pat_clone))
+                        .filter(|x| memchr::memmem::find(x.str.as_bytes(), pat_clone.as_bytes()).is_some() )
                         .map(|x| x.str.clone())
                         .collect();
                     #[allow(clippy::search_is_some)]
                     let finds_ascii: Vec<String> = find_res
                         .ascii
                         .iter()
-                        .filter(|x| x.str.contains(&pat_clone))
+                        .filter(|x| memchr::memmem::find(x.str.as_bytes(), pat_clone.as_bytes()).is_some())
                         .map(|x| x.str.clone())
                         .collect();
 
                     let finds_addr = unsafe {
                         get_base_addr_all_send_pat_filter::<SendableCvoidPtrMut>(&find_res, |x| {
-                            x.contains(&pat_clone)
+                            memchr::memmem::find(x.as_bytes(), pat_clone.as_bytes()).is_some()
                         })
                     };
                     //бля адресса нефильтрую
