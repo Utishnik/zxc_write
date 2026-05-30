@@ -621,7 +621,7 @@ fn main() {
     println!("[DEBUG] pid: {}", pid);
     unsafe {
         let res_dyn_pat: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
-            get_childs_dyn_pat_cvoid(pid, "zxc_write".to_string(), log, 0, None);
+            get_childs_dyn_pat_cvoid(pid, "zxc_write".to_string(), log, 1, Some(14000));
         if let Err(e) = res_dyn_pat {
             println!("[ERROR] {:?}", e);
             wait_close();
