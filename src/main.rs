@@ -66,17 +66,17 @@ fn extract_str(dwprocessid: u32, log: OptionLog) -> Result<ExtractStrResult, ()>
 }
 
 #[hotpath::measure]
-fn extract_str_dyn_mem(
+fn extract_str_dyn_mem_lossy(
     dwprocessid: u32,
     log: OptionLog,
     min_len: usize,
     max_len: Option<usize>,
 ) -> Result<ExtractStrResult, ()> {
     let extract_ascii_strings_fn = |buf, size, base_ptr, min_len, max_len| unsafe {
-        extract_ascii_strings(buf, size, base_ptr, min_len, max_len)
+        extract_ascii_strings_lossy(buf, size, base_ptr, min_len, max_len)
     };
     let extract_unicode_strings_fn = |buf, size, base_ptr, min_len, max_len| unsafe {
-        extract_unicode_strings(buf, size, base_ptr, min_len, max_len)
+        extract_unicode_strings_lossy(buf, size, base_ptr, min_len, max_len)
     };
 
     let scan_res;
@@ -402,7 +402,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
                 for item in jobs.into_iter().enumerate() {
                     let pool_log_clone = log_clone.clone();
                     let find_res =
-                        extract_str_dyn_mem(item.1, pool_log_clone.clone(), min_len, max_len);
+                        extract_str_dyn_mem_lossy(item.1, pool_log_clone.clone(), min_len, max_len);
                     if find_res.is_err() {
                         println!("find strings failed: None");
                         return;
@@ -647,7 +647,7 @@ fn main() {
     println!("[DEBUG] pid: {}", pid);
     unsafe {
         let res_dyn_pat: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
-            get_childs_dyn_pat_cvoid(pid, "zxc".to_string(), log, 1, Some(14000));
+            get_childs_dyn_pat_cvoid(pid, "hotpath".to_string(), log, 1, Some(14000));
         if let Err(e) = res_dyn_pat {
             println!("[ERROR] {:?}", e);
             wait_close();
@@ -719,5 +719,6 @@ fn main() {
         //get_childs_cvoid(pid);
     }
 
+    std::thread::sleep(std::time::Duration::from_millis(1000));
     wait_close();
 }

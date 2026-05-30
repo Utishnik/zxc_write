@@ -309,6 +309,87 @@ pub unsafe fn extract_unicode_strings(
     extract_res
 }
 
+/// # Safety
+/// при валидных inputs
+/// не сбрасывает строку при нахождение не читаемого символа а просто пропускает его
+#[hotpath::measure]
+pub unsafe fn extract_unicode_strings_lossy(
+    buf: *const c_void,
+    size: usize,
+    base_ptr: *const c_void,
+    min_len: usize,
+    max_len: Option<usize>,
+) -> Vec<ExtractStr> {
+    //let mut extract_res: Vec<ExtractStr> = Vec::with_capacity(size / 2 / max(min_len, 1));
+    let mut extract_res: Vec<ExtractStr> = Vec::new();
+    let mut cur: String = String::default();
+    let mut start_offset: usize = 0;
+    let max_len_some: bool = max_len.is_some();
+    let mut i: usize = 0;
+    while i + 1 < size {
+        let c1 = unsafe { *(buf as *const u8).add(i) };
+        let c2 = unsafe { *(buf as *const u8).add(i + 1) };
+
+        if is_null_utf16le(c1, c2) {
+            // Null terminator — конец строки
+            if cur.len() >= min_len {
+                #[expect(clippy::missing_panics_doc, reason = "infallible")]
+                let fits_max = if max_len_some {
+                    cur.len() <= max_len.unwrap()
+                } else {
+                    true
+                };
+                if fits_max {
+                    extract_res.push(ExtractStr {
+                        base_addr: (base_ptr as usize + start_offset) as *mut c_void,
+                        str: cur.clone(),
+                    });
+                }
+            }
+            cur.clear();
+        } else if is_printable_utf16le(c1, c2) {
+            // Валидный printable символ UTF-16LE
+            if cur.is_empty() {
+                start_offset = i;
+            }
+            let code_unit = u16::from_le_bytes([c1, c2]);
+            if let Some(ch) = char::from_u32(code_unit as u32) {
+                cur.push(ch);
+            }
+            // Принудительный пуш если достигли max_len
+            if max_len_some && cur.len() >= max_len.unwrap() {
+                extract_res.push(ExtractStr {
+                    base_addr: (base_ptr as usize + start_offset) as *mut c_void,
+                    str: cur.clone(),
+                });
+                cur.clear();
+            }
+        } else {
+            // Мусор — игнорируем
+            //cur.clear();
+        }
+
+        i += 2;
+    }
+
+    // Хвост (если данные закончились без null-terminator)
+    if cur.len() >= min_len {
+        let fits_max = if max_len_some {
+            cur.len() <= max_len.unwrap()
+        } else {
+            true
+        };
+        if fits_max {
+            extract_res.push(ExtractStr {
+                base_addr: (base_ptr as usize + start_offset) as *mut c_void,
+                str: cur,
+            });
+        }
+    }
+
+    extract_res
+}
+
 #[derive(Debug)]
 pub struct StringCfg {
     pub min_len: usize,
