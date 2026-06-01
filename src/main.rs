@@ -516,7 +516,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
         unreachable!();
     }
 }
-pub struct ScanStrAllResSendArena<T>{
+pub struct ScanStrAllResSendArena<T> {
     pub finds_ascii: Arena<Vec<String>>,
     pub finds_unicode: Arena<Vec<String>>,
     pub finds_addr: Arena<BaseAddrResSend<T>>,
@@ -525,7 +525,7 @@ pub struct ScanStrAllResSendArena<T>{
 #[hotpath::measure]
 unsafe fn get_childs_dyn_pats_cvoid(
     pid: u32,
-    pats: &[String],
+    pats: Box<[String]>,
     log: Arc<Option<Mutex<Logger>>>,
     min_len: usize,
     max_len: Option<usize>,
@@ -578,43 +578,42 @@ unsafe fn get_childs_dyn_pats_cvoid(
                     }
                     let find_res = find_res.unwrap();
 
-                    
                     let finds_uc_arena = Arena::new();
                     let finds_ascii_arena = Arena::new();
                     let finds_addr_arena = Arena::new();
 
                     //от memchr конечно профита нет но пофиг
                     #[allow(clippy::search_is_some)]
-                    for item in pat_clone {
+                    for item in pat_clone.iter() {
                         let finds_uc: Vec<String> = find_res
                             .unicode
                             .iter()
                             .filter(|x| {
-                                memchr::memmem::find(x.str.as_bytes(), item.as_bytes())
-                                    .is_some()
+                                memchr::memmem::find(x.str.as_bytes(), item.as_bytes()).is_some()
                             })
                             .map(|x| x.str.clone())
                             .collect();
-                        finds_uc_arena.alloc(finds_uc);
                         #[allow(clippy::search_is_some)]
                         let finds_ascii: Vec<String> = find_res
                             .ascii
                             .iter()
                             .filter(|x| {
-                                memchr::memmem::find(x.str.as_bytes(), item.as_bytes())
-                                    .is_some()
+                                memchr::memmem::find(x.str.as_bytes(), item.as_bytes()).is_some()
                             })
                             .map(|x| x.str.clone())
                             .collect();
+
+                        //#[cfg(debug_assertions)]
+                        let finds_ascii_clone = finds_ascii.clone();
+                        let finds_uc_clone = finds_uc.clone();
+
                         finds_ascii_arena.alloc(finds_ascii);
+                        finds_uc_arena.alloc(finds_uc);
 
                         let finds_addr = unsafe {
                             get_base_addr_all_send_pat_filter::<SendableCvoidPtrMut>(
                                 &find_res,
-                                |x| {
-                                    memchr::memmem::find(x.as_bytes(), item.as_bytes())
-                                        .is_some()
-                                },
+                                |x| memchr::memmem::find(x.as_bytes(), item.as_bytes()).is_some(),
                             )
                         };
                         finds_addr_arena.alloc(finds_addr);
@@ -625,7 +624,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
                             if let Some(x) = deref_log
                                 && let Ok(guard) = x.lock()
                             {
-                                let clone_finds_ascii = finds_ascii.clone();
+                                let clone_finds_ascii = finds_ascii_clone.clone();
                                 guard.untrack_info(move || {
                                     format!(
                                         "finds ascii: len: {}",
@@ -633,7 +632,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
                                     )
                                 });
 
-                                let clone_finds_uc = finds_uc.clone();
+                                let clone_finds_uc = finds_uc_clone.clone();
                                 guard.untrack_info(move || {
                                     format!(
                                         "finds unicode: len: {}",
@@ -660,7 +659,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
                         }
                     }
                     unsafe {
-                        let ret_ptr = ret_ptr_clone;
+                        let ret_ptr = ret_ptr_clone.clone();
                         //раст не дает перемещать ptr
                         //мы создаем указатель внутри/если делать снаружи и писать что то типа (*ret_ptr).0 то ошибка что *mut
                         //нельзя перемещать
