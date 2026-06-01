@@ -852,12 +852,12 @@ fn more_pats(
 
     let extract_addr_only_ascii: Vec<_> = extract_addr
         .iter()
-        .flat_map(|x| x)
+        .flatten()
         .map(|x| x.assci.clone())
         .collect();
     let extract_addr_only_unicode: Vec<_> = extract_addr
         .iter()
-        .flat_map(|x| x)
+        .flatten()
         .map(|x| x.unicode.clone())
         .collect();
     Ok(MorePatsExtractRes {
@@ -940,18 +940,18 @@ fn more_pats_run(name: &str) {
             .collect();
         let str_assci_addr = fmt_assci_addr
             .iter()
-            .flat_map(|x| x)
+            .flatten()
             .collect::<Vec<_>>()
             .vec_string(DEFAULT_FORMAT_RULE);
         let str_unicode_addr = fmt_unicode_addr
             .iter()
-            .flat_map(|x| x)
+            .flatten()
             .collect::<Vec<_>>()
             .vec_string(DEFAULT_FORMAT_RULE);
         println!("ASSCI ADDR:  {}", str_assci_addr);
         println!("UNICODE ADDR:  {}", str_unicode_addr);
         println!("\n\nstrs: ");
-        for item in res.extract_assci_str.iter().flat_map(|x| x) {
+        for item in res.extract_assci_str.iter().flatten() {
             if item.len() < 64 {
                 println!("ascii: {}", item.vec_string(DEFAULT_FORMAT_RULE));
             } else {
@@ -964,7 +964,7 @@ fn more_pats_run(name: &str) {
                 );
             }
         }
-        for item in res.extract_unicode_str.iter().flat_map(|x| x) {
+        for item in res.extract_unicode_str.iter().flatten() {
             if item.len() < 64 {
                 println!("unicode: {}", item.vec_string(DEFAULT_FORMAT_RULE));
             } else {
@@ -1099,5 +1099,8 @@ fn main() {
     }
 
     std::thread::sleep(std::time::Duration::from_millis(1000));
+    println!("нажми enter для теста more pats");
+    wait_close();
+    more_pats_run("firefox.exe");
     wait_close();
 }
