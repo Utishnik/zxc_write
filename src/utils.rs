@@ -92,11 +92,16 @@ pub struct SendablePtr<T /* :Clone*/>(pub *const T);
 unsafe impl<T> Send for SendablePtr<T> {}
 unsafe impl<T> Sync for SendablePtr<T> {}
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Copy)]
 pub struct SendablePtrMut<T /* :Clone*/>(pub *mut T);
 
 unsafe impl<T /* :Clone*/> Send for SendablePtrMut<T> {}
 unsafe impl<T /* :Clone*/> Sync for SendablePtrMut<T> {}
+impl<T /* :Clone*/> Clone for SendablePtrMut<T> {
+    fn clone(&self) -> Self {
+        Self(self.0)
+    }
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct SendableCvoidPtrMut(pub *mut c_void);

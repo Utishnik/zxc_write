@@ -516,6 +516,189 @@ unsafe fn get_childs_dyn_pat_cvoid(
         unreachable!();
     }
 }
+pub struct ScanStrAllResSendArena<T>{
+    pub finds_ascii: Arena<Vec<String>>,
+    pub finds_unicode: Arena<Vec<String>>,
+    pub finds_addr: Arena<BaseAddrResSend<T>>,
+}
+
+#[hotpath::measure]
+unsafe fn get_childs_dyn_pats_cvoid(
+    pid: u32,
+    pats: &[String],
+    log: Arc<Option<Mutex<Logger>>>,
+    min_len: usize,
+    max_len: Option<usize>,
+) -> Result<Vec<ScanStrAllResSendArena<SendableCvoidPtrMut>>, win_core::Error> {
+    let childs = get_child_processes(pid);
+    if let Err(e) = childs {
+        println!("[ERROR] get_childs {:?}", e);
+        Err(e)
+    } else if let Ok(ok) = childs {
+        let mut pids_vec: Vec<u32> = Vec::new();
+        pids_vec.push(pid);
+        let names = ok
+            .iter()
+            .map(|x| {
+                pids_vec.push(x.0);
+                format!("name exe {}\tpid: {}", x.1.clone(), x.0)
+            })
+            .collect::<Vec<String>>();
+        let cnt_pids = pids_vec.len();
+        let mut ret = Vec::with_capacity(cnt_pids);
+        let ret_raw_ptr = ret.as_mut_ptr();
+        let ret_ptr = SendablePtrMut::<ScanStrAllResSendArena<SendableCvoidPtrMut>>(ret_raw_ptr);
+
+        println!("{}", names.vec_string(DEFAULT_FORMAT_RULE));
+        println!("CNT Pids:  {}", cnt_pids);
+        let avb_p = std::thread::available_parallelism().unwrap_or(NonZero::new(8).unwrap());
+        let pool = ThreadPool::new(/*cnt_pids*/ avb_p.get());
+        let an_atomic = Arc::new(AtomicUsize::new(0));
+        let cnt_job = cmp::max(cnt_pids / avb_p, 1);
+        println!("cnt job {}", cnt_job);
+        let jobs_vec = jobs_disp(cnt_job, pids_vec);
+        let mut vec_cur = 0;
+        let mut ret_len = 0;
+        //let len_pats = pats.len();
+        for jobs in jobs_vec.into_iter() {
+            let len_job = jobs.clone().len();
+            let an_atomic = an_atomic.clone();
+            let vec_cur_copy = vec_cur;
+            let pat_clone = pats.clone();
+            let ret_ptr_clone = ret_ptr.clone();
+            let log_clone = log.clone();
+            pool.execute(move || {
+                for item in jobs.into_iter().enumerate() {
+                    let pool_log_clone = log_clone.clone();
+                    let find_res =
+                        extract_str_dyn_mem_lossy(item.1, pool_log_clone.clone(), min_len, max_len);
+                    if find_res.is_err() {
+                        println!("find strings failed: None");
+                        return;
+                    }
+                    let find_res = find_res.unwrap();
+
+                    
+                    let finds_uc_arena = Arena::new();
+                    let finds_ascii_arena = Arena::new();
+                    let finds_addr_arena = Arena::new();
+
+                    //от memchr конечно профита нет но пофиг
+                    #[allow(clippy::search_is_some)]
+                    for item in pat_clone {
+                        let finds_uc: Vec<String> = find_res
+                            .unicode
+                            .iter()
+                            .filter(|x| {
+                                memchr::memmem::find(x.str.as_bytes(), item.as_bytes())
+                                    .is_some()
+                            })
+                            .map(|x| x.str.clone())
+                            .collect();
+                        finds_uc_arena.alloc(finds_uc);
+                        #[allow(clippy::search_is_some)]
+                        let finds_ascii: Vec<String> = find_res
+                            .ascii
+                            .iter()
+                            .filter(|x| {
+                                memchr::memmem::find(x.str.as_bytes(), item.as_bytes())
+                                    .is_some()
+                            })
+                            .map(|x| x.str.clone())
+                            .collect();
+                        finds_ascii_arena.alloc(finds_ascii);
+
+                        let finds_addr = unsafe {
+                            get_base_addr_all_send_pat_filter::<SendableCvoidPtrMut>(
+                                &find_res,
+                                |x| {
+                                    memchr::memmem::find(x.as_bytes(), item.as_bytes())
+                                        .is_some()
+                                },
+                            )
+                        };
+                        finds_addr_arena.alloc(finds_addr);
+                        //бля адресса нефильтрую
+                        //#[cfg(debug_assertions)]
+                        {
+                            let deref_log = pool_log_clone.deref().as_ref();
+                            if let Some(x) = deref_log
+                                && let Ok(guard) = x.lock()
+                            {
+                                let clone_finds_ascii = finds_ascii.clone();
+                                guard.untrack_info(move || {
+                                    format!(
+                                        "finds ascii: len: {}",
+                                        clone_finds_ascii.vec_string(DEFAULT_FORMAT_RULE).len(),
+                                    )
+                                });
+
+                                let clone_finds_uc = finds_uc.clone();
+                                guard.untrack_info(move || {
+                                    format!(
+                                        "finds unicode: len: {}",
+                                        clone_finds_uc.vec_string(DEFAULT_FORMAT_RULE).len(),
+                                    )
+                                });
+                                /*
+                                let clone_finds_ascii = finds_ascii.clone();
+                                guard.untrack_info(move || {
+                                    format!(
+                                        "Ascii:\t{}",
+                                        clone_finds_ascii.vec_string(DEFAULT_FORMAT_RULE),
+                                    )
+                                });
+                                let clone_finds_uc = finds_uc.clone();
+                                guard.untrack_info(move || {
+                                    format!(
+                                        "Unicode:\t{}",
+                                        clone_finds_uc.vec_string(DEFAULT_FORMAT_RULE),
+                                    )
+                                });
+                                */
+                            }
+                        }
+                    }
+                    unsafe {
+                        let ret_ptr = ret_ptr_clone;
+                        //раст не дает перемещать ptr
+                        //мы создаем указатель внутри/если делать снаружи и писать что то типа (*ret_ptr).0 то ошибка что *mut
+                        //нельзя перемещать
+                        //потому что блять типо поле мы захватаем а не весь тип а поле 0 как раз у нас нихуя не send это *mut
+                        let inner = ret_ptr.0.add(vec_cur_copy + item.0);
+                        (*inner).finds_addr = finds_addr_arena;
+                        (*inner).finds_ascii = finds_ascii_arena;
+                        (*inner).finds_unicode = finds_uc_arena;
+                        //#[cfg(debug_assertions)]
+                        // (*inner).finds_addr.assci.iter().for_each(|x|println!("addres ascii: {:p}",x.0));
+                    }
+                    an_atomic.fetch_add(1, Ordering::Relaxed);
+                }
+            });
+
+            //println!("Ascii:\t{}", find_res.ascii.vec_string(DEFAULT_FORMAT_RULE));
+            /*
+            println!(
+                "Unicode:\t{}",
+                find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
+            );
+            */
+            vec_cur += len_job;
+            ret_len += len_job;
+        }
+        unsafe {
+            ret.set_len(ret_len);
+        }
+        while let load = an_atomic.load(Ordering::Relaxed)
+            && load != cnt_pids
+        {}
+        println!("log");
+        let _ = shutdown_logger(log);
+        Ok(ret)
+    } else {
+        unreachable!();
+    }
+}
 
 #[hotpath::measure]
 unsafe fn get_childs_cvoid(
@@ -653,7 +836,7 @@ fn main() {
     println!("[DEBUG] pid: {}", pid);
     unsafe {
         let res_dyn_pat: Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> =
-            get_childs_dyn_pat_cvoid(pid, "hotpath".to_string(), log, 1, Some(14000));
+            get_childs_dyn_pat_cvoid(pid, "russh".to_string(), log, 1, Some(14000));
         if let Err(e) = res_dyn_pat {
             println!("[ERROR] {:?}", e);
             wait_close();
