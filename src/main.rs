@@ -807,6 +807,67 @@ fn shutdown_logger(log: Arc<Option<Mutex<Logger>>>) -> Result<(), ()> {
     Ok(())
 }
 
+pub struct MorePatsExtractRes {
+    pub extract_assci_str: Vec<Vec<Vec<String>>>,
+    pub extract_unicode_str: Vec<Vec<Vec<String>>>,
+    pub extract_addr_only_ascii: Vec<Vec<SendablePtr<SendableCvoidPtrMut>>>,
+    pub extract_addr_only_unicode: Vec<Vec<SendablePtr<SendableCvoidPtrMut>>>,
+}
+
+#[hotpath::measure]
+fn more_pats(
+    log: Arc<Option<Mutex<Logger>>>,
+    pid: u32,
+) -> windows::core::Result<MorePatsExtractRes> {
+    let res_dyn_pats;
+    unsafe {
+        res_dyn_pats = get_childs_dyn_pats_cvoid(
+            pid,
+            Box::new(["russh".to_string(), "hotpath".to_string()]),
+            log,
+            1,
+            Some(14000),
+        );
+    }
+    if let Err(e) = res_dyn_pats {
+        println!("[ERROR] {:?}", e);
+        wait_close();
+        return Err(e);
+    }
+    //todo rayon
+    let mut res_dyn_pats = res_dyn_pats.unwrap();
+    let extract_assci_str: Vec<_> = res_dyn_pats
+        .iter_mut()
+        .map(|x| make_vec_to_borrow_arena(&mut x.finds_ascii))
+        .collect();
+    let extract_unicode_str: Vec<_> = res_dyn_pats
+        .iter_mut()
+        .map(|x| make_vec_to_borrow_arena(&mut x.finds_unicode))
+        .collect();
+    let extract_addr: Vec<_> = res_dyn_pats
+        .iter_mut()
+        .map(|x| make_vec_to_borrow_arena(&mut x.finds_addr))
+        .collect();
+    drop(res_dyn_pats);
+
+    let extract_addr_only_ascii: Vec<_> = extract_addr
+        .iter()
+        .flat_map(|x| x)
+        .map(|x| x.assci.clone())
+        .collect();
+    let extract_addr_only_unicode: Vec<_> = extract_addr
+        .iter()
+        .flat_map(|x| x)
+        .map(|x| x.unicode.clone())
+        .collect();
+    Ok(MorePatsExtractRes {
+        extract_assci_str,
+        extract_unicode_str,
+        extract_addr_only_ascii,
+        extract_addr_only_unicode,
+    })
+}
+
 #[hotpath::main]
 fn main() {
     let build_log = Logger::safe_builder(None, None);
