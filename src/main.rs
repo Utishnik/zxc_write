@@ -868,6 +868,123 @@ fn more_pats(
     })
 }
 
+fn more_pats_run(name: &str) {
+    let build_log = Logger::safe_builder(None, None);
+    let unwrap = match build_log {
+        LoggerRes::Ok(ok) => ok.ok(),
+        LoggerRes::Panic(_) => {
+            println!("[ERROR] Logger отвалился");
+            None
+        }
+    };
+    let log = unwrap.map_or_else(|| Arc::new(None), |x| Arc::new(Some(Mutex::new(x))));
+    let privilege_res = enable_privilege_one("SeDebugPrivilege");
+    if let Err(e) = privilege_res {
+        println!("Error: {:?}", e);
+        wait_close();
+    }
+    let fnd_name = find_process_by_name(name);
+    if let Err(e) = fnd_name {
+        println!("Error: {:?}", e);
+        wait_close();
+        return;
+    }
+    let pid = fnd_name.unwrap();
+    println!("[DEBUG] pid: {}", pid);
+    let res = more_pats(log, pid);
+    if let Err(e) = res {
+        println!("[ERROR] {:?}", e);
+        wait_close();
+        return;
+    }
+    let res = res.unwrap();
+    //#[cfg(debug_assertions)]
+    println!(
+        "addres cnt ascii: {} unicode: {}",
+        res.extract_addr_only_ascii.len(),
+        res.extract_addr_only_unicode.len()
+    );
+
+    // #[cfg(debug_assertions)]
+    {
+        println!("address print:");
+        let fmt_assci_addr: Vec<_> = res
+            .extract_addr_only_ascii
+            .iter()
+            .map(|x| {
+                x.iter()
+                    .map(|y| {
+                        if y.0.is_null() {
+                            "".to_string()
+                        } else {
+                            format!("{:p}", y.0)
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let fmt_unicode_addr: Vec<_> = res
+            .extract_addr_only_unicode
+            .iter()
+            .map(|x| {
+                x.iter()
+                    .map(|y| {
+                        if y.0.is_null() {
+                            "".to_string()
+                        } else {
+                            format!("{:p}", y.0)
+                        }
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        let str_assci_addr = fmt_assci_addr
+            .iter()
+            .flat_map(|x| x)
+            .collect::<Vec<_>>()
+            .vec_string(DEFAULT_FORMAT_RULE);
+        let str_unicode_addr = fmt_unicode_addr
+            .iter()
+            .flat_map(|x| x)
+            .collect::<Vec<_>>()
+            .vec_string(DEFAULT_FORMAT_RULE);
+        println!("ASSCI ADDR:  {}", str_assci_addr);
+        println!("UNICODE ADDR:  {}", str_unicode_addr);
+        println!("\n\nstrs: ");
+        for item in res.extract_assci_str.iter().flat_map(|x| x) {
+            if item.len() < 64 {
+                println!("ascii: {}", item.vec_string(DEFAULT_FORMAT_RULE));
+            } else {
+                println!(
+                    "ascii: {} ...",
+                    item.iter()
+                        .map(|x| x.get(0..63).unwrap_or_default())
+                        .collect::<Vec<_>>()
+                        .vec_string(DEFAULT_FORMAT_RULE)
+                );
+            }
+        }
+        for item in res.extract_unicode_str.iter().flat_map(|x| x) {
+            if item.len() < 64 {
+                println!("unicode: {}", item.vec_string(DEFAULT_FORMAT_RULE));
+            } else {
+                println!(
+                    "unicode: {} ...",
+                    item.iter()
+                        .map(|x| x.get(0..63).unwrap_or_default())
+                        .collect::<Vec<_>>()
+                        .vec_string(DEFAULT_FORMAT_RULE)
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn more_pats_test() {
+    more_pats_run("firefox.exe");
+}
+
 #[hotpath::main]
 fn main() {
     let build_log = Logger::safe_builder(None, None);
