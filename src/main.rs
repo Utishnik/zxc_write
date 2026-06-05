@@ -4,6 +4,7 @@ use std::num::NonZero;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
+use allocative::Allocative;
 use threadpool::ThreadPool;
 use typed_arena::Arena;
 use vec_string::*;
@@ -71,6 +72,7 @@ fn extract_str_dyn_mem_lossy(
     log: OptionLog,
     min_len: usize,
     max_len: Option<usize>,
+    all_trace_bytes:  Arc<AtomicUsize>,
 ) -> Result<ExtractStrResult, ()> {
     let extract_ascii_strings_fn = |buf, size, base_ptr, min_len, max_len| unsafe {
         extract_ascii_strings_lossy(buf, size, base_ptr, min_len, max_len)
@@ -391,9 +393,11 @@ unsafe fn get_childs_dyn_pat_cvoid(
         let jobs_vec = jobs_disp(cnt_job, pids_vec);
         let mut vec_cur: usize = 0;
         let mut ret_len = 0;
+        let all_bytes_trace: Arc<AtomicUsize> = Arc::new(AtomicUsize::new(0));
         for jobs in jobs_vec.into_iter() {
             let len_job = jobs.clone().len();
             let an_atomic = an_atomic.clone();
+            let all_bytes_trace = all_bytes_trace.clone();
             let vec_cur_copy = vec_cur;
             let pat_clone = pat.clone();
             let ret_ptr_clone = ret_ptr.clone();
@@ -402,7 +406,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
                 for item in jobs.into_iter().enumerate() {
                     let pool_log_clone = log_clone.clone();
                     let find_res =
-                        extract_str_dyn_mem_lossy(item.1, pool_log_clone.clone(), min_len, max_len);
+                        extract_str_dyn_mem_lossy(item.1, pool_log_clone.clone(), min_len, max_len,all_bytes_trace.clone());
                     if find_res.is_err() {
                         println!("find strings failed: None");
                         return;
@@ -554,6 +558,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
         let avb_p = std::thread::available_parallelism().unwrap_or(NonZero::new(8).unwrap());
         let pool = ThreadPool::new(/*cnt_pids*/ avb_p.get());
         let an_atomic = Arc::new(AtomicUsize::new(0));
+        let all_trace =  Arc::new(AtomicUsize::new(0));
         let cnt_job = cmp::max(cnt_pids / avb_p, 1);
         println!("cnt job {}", cnt_job);
         let jobs_vec = jobs_disp(cnt_job, pids_vec);
@@ -563,6 +568,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
         for jobs in jobs_vec.into_iter() {
             let len_job = jobs.clone().len();
             let an_atomic = an_atomic.clone();
+            let all_trace = all_trace.clone();
             let vec_cur_copy = vec_cur;
             let pat_clone = pats.clone();
             let ret_ptr_clone = ret_ptr.clone();
@@ -571,7 +577,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
                 for item in jobs.into_iter().enumerate() {
                     let pool_log_clone = log_clone.clone();
                     let find_res =
-                        extract_str_dyn_mem_lossy(item.1, pool_log_clone.clone(), min_len, max_len);
+                        extract_str_dyn_mem_lossy(item.1, pool_log_clone.clone(), min_len, max_len,all_trace.clone());
                     if find_res.is_err() {
                         println!("find strings failed: None");
                         return;

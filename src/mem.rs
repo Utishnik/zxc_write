@@ -802,7 +802,8 @@ pub fn scan_dynamic_mem(
                 }
             }
             trace_size += size;
-            let mut buf = vec![0_u8; size];
+
+            let mut buf = Vec::with_capacity(size);
             let mut read = 0_usize;
             let ok = unsafe {
                 ReadProcessMemory(
@@ -822,13 +823,12 @@ pub fn scan_dynamic_mem(
 
         addr = next as *const _;
     }
-
     if let Some(x) = log_deref {
         let guard = x.lock();
         if let Ok(ok_guard) = guard
             && trace_size > 100_000_000
         {
-            ok_guard.untrack_warning(move || format!("size: {trace_size}"));
+            ok_guard.untrack_warning(move || format!("acc size: {trace_size}"));
         }
     }
 
