@@ -792,7 +792,7 @@ pub fn scan_dynamic_mem(
         let is_dynamic =
             mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE && is_readwrite(mbi.Protect);
         if is_dynamic {
-            let size = mbi.RegionSize.min(max_cap);
+            let size = mbi.RegionSize.min(max_cap).max(1);
             if let Some(x) = log_deref {
                 let guard = x.lock();
                 if let Ok(ok_guard) = guard

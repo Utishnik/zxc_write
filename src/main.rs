@@ -1090,7 +1090,7 @@ fn main() {
         }
         let addr_tuple: Vec<_> = addr_only_assci
             .into_iter()
-            .zip(addr_only_unicode.into_iter())
+            .zip(addr_only_unicode)
             .collect();
     };
     unsafe {
