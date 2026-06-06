@@ -1,10 +1,10 @@
+use allocative::Allocative;
 use core::ffi::c_void;
 use std::cmp;
 use std::num::NonZero;
 use std::ops::Deref;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use allocative::Allocative;
 use threadpool::ThreadPool;
 use typed_arena::Arena;
 use vec_string::*;
@@ -72,7 +72,7 @@ fn extract_str_dyn_mem_lossy(
     log: OptionLog,
     min_len: usize,
     max_len: Option<usize>,
-    all_trace_bytes:  Arc<AtomicUsize>,
+    all_trace_bytes: Arc<AtomicUsize>,
 ) -> Result<ExtractStrResult, ()> {
     let extract_ascii_strings_fn = |buf, size, base_ptr, min_len, max_len| unsafe {
         extract_ascii_strings_lossy(buf, size, base_ptr, min_len, max_len)
@@ -90,6 +90,7 @@ fn extract_str_dyn_mem_lossy(
             101_704_332_083_002,
             None,
             log.clone(),
+            all_trace_bytes,
         ); //тут кажется может проблема быть
     }); //cold меньше процента
 
@@ -405,8 +406,13 @@ unsafe fn get_childs_dyn_pat_cvoid(
             pool.execute(move || {
                 for item in jobs.into_iter().enumerate() {
                     let pool_log_clone = log_clone.clone();
-                    let find_res =
-                        extract_str_dyn_mem_lossy(item.1, pool_log_clone.clone(), min_len, max_len,all_bytes_trace.clone());
+                    let find_res = extract_str_dyn_mem_lossy(
+                        item.1,
+                        pool_log_clone.clone(),
+                        min_len,
+                        max_len,
+                        all_bytes_trace.clone(),
+                    );
                     if find_res.is_err() {
                         println!("find strings failed: None");
                         return;
@@ -558,7 +564,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
         let avb_p = std::thread::available_parallelism().unwrap_or(NonZero::new(8).unwrap());
         let pool = ThreadPool::new(/*cnt_pids*/ avb_p.get());
         let an_atomic = Arc::new(AtomicUsize::new(0));
-        let all_trace =  Arc::new(AtomicUsize::new(0));
+        let all_trace = Arc::new(AtomicUsize::new(0));
         let cnt_job = cmp::max(cnt_pids / avb_p, 1);
         println!("cnt job {}", cnt_job);
         let jobs_vec = jobs_disp(cnt_job, pids_vec);
@@ -576,8 +582,13 @@ unsafe fn get_childs_dyn_pats_cvoid(
             pool.execute(move || {
                 for item in jobs.into_iter().enumerate() {
                     let pool_log_clone = log_clone.clone();
-                    let find_res =
-                        extract_str_dyn_mem_lossy(item.1, pool_log_clone.clone(), min_len, max_len,all_trace.clone());
+                    let find_res = extract_str_dyn_mem_lossy(
+                        item.1,
+                        pool_log_clone.clone(),
+                        min_len,
+                        max_len,
+                        all_trace.clone(),
+                    );
                     if find_res.is_err() {
                         println!("find strings failed: None");
                         return;
@@ -1094,10 +1105,7 @@ fn main() {
                 }
             }
         }
-        let addr_tuple: Vec<_> = addr_only_assci
-            .into_iter()
-            .zip(addr_only_unicode)
-            .collect();
+        let addr_tuple: Vec<_> = addr_only_assci.into_iter().zip(addr_only_unicode).collect();
     };
     unsafe {
         //let _: Result<Vec<ScanStrAllResSend::<SendableCvoidPtrMut>>, win_core::Error> =

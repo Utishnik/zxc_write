@@ -44,8 +44,10 @@
 
 //alloc
 #[cfg(not(feature = "hotpath-alloc"))]
+#[cfg(not(miri))]
 use mimalloc::MiMalloc;
 #[cfg(not(feature = "hotpath-alloc"))]
+#[cfg(not(miri))]
 #[global_allocator]
 static GLOBAL: MiMalloc = MiMalloc;
 

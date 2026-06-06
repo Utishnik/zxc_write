@@ -735,6 +735,9 @@ pub fn scan_dynamic_mem_custom_filter<F: Fn(MEMORY_BASIC_INFORMATION) -> bool>(
     Ok(ret)
 }
 
+use std::sync::atomic::AtomicUsize;
+use std::sync::atomic::Ordering;
+
 #[hotpath::measure]
 pub fn scan_dynamic_mem(
     pid: u32,
@@ -743,6 +746,7 @@ pub fn scan_dynamic_mem(
     max_addr_offset: usize,
     start_addres: Option<*const c_void>,
     log: OptionLog,
+    all_trace_bytes: Arc<AtomicUsize>,
 ) -> windows::core::Result<Vec<ReadProcessMemoryResult>> {
     let mut ret: Vec<ReadProcessMemoryResult> = Vec::new();
     let h_process =
@@ -802,6 +806,17 @@ pub fn scan_dynamic_mem(
                 }
             }
             trace_size += size;
+            all_trace_bytes.fetch_add(size, Ordering::Relaxed);
+
+            if let Some(x) = log_deref {
+                let guard = x.lock();
+                if let Ok(ok_guard) = guard
+                    && let trace_size = all_trace_bytes.load(Ordering::Relaxed)
+                    && trace_size > 100_000_000
+                {
+                    ok_guard.untrack_warning(move || format!("all trace bytes size: {trace_size}"));
+                }
+            }
 
             let mut buf = Vec::with_capacity(size);
             let mut read = 0_usize;
