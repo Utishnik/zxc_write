@@ -1017,6 +1017,7 @@ fn more_pats_test() {
 
 #[hotpath::main]
 fn main() {
+    /* 
     let build_log = Logger::safe_builder(None, None);
     let unwrap = match build_log {
         LoggerRes::Ok(ok) => ok.ok(),
@@ -1126,6 +1127,7 @@ fn main() {
     }
 
     std::thread::sleep(std::time::Duration::from_millis(1000));
+    */
     println!("нажми enter для теста more pats");
     wait_close();
     more_pats_run("firefox.exe");
