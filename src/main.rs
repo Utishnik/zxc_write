@@ -590,7 +590,12 @@ unsafe fn get_childs_dyn_pats_cvoid(
                         all_trace.clone(),
                     );
                     if find_res.is_err() {
-                        println!("find strings failed: None");
+                        let deref_log = pool_log_clone.deref().as_ref();
+                        if let Some(x) = deref_log
+                            && let Ok(guard) = x.lock()
+                        {
+                            guard.untrack_error(|| "find strings failed: None");
+                        }
                         return;
                     }
                     let find_res = find_res.unwrap();
@@ -656,6 +661,12 @@ unsafe fn get_childs_dyn_pats_cvoid(
                                         clone_finds_uc.vec_string(DEFAULT_FORMAT_RULE).len(),
                                     )
                                 });
+                                let an_atomic_clone = an_atomic.clone();
+                                guard.untrack_info(move || {
+                                    format!(
+                                        "number: {}",an_atomic_clone.load(Ordering::Relaxed)
+                                    )
+                                });
                                 /*
                                 let clone_finds_ascii = finds_ascii.clone();
                                 guard.untrack_info(move || {
@@ -685,8 +696,10 @@ unsafe fn get_childs_dyn_pats_cvoid(
                         (*inner).finds_addr = finds_addr_arena;
                         (*inner).finds_ascii = finds_ascii_arena;
                         (*inner).finds_unicode = finds_uc_arena;
+                        
                         //#[cfg(debug_assertions)]
                         // (*inner).finds_addr.assci.iter().for_each(|x|println!("addres ascii: {:p}",x.0));
+
                     }
                     an_atomic.fetch_add(1, Ordering::Relaxed);
                 }

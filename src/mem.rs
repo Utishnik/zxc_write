@@ -814,7 +814,7 @@ pub fn scan_dynamic_mem(
                     && let trace_size = all_trace_bytes.load(Ordering::Relaxed)
                     && trace_size > 100_000_000
                 {
-                    ok_guard.untrack_warning(move || format!("all trace bytes size: {trace_size}"));
+                    //ok_guard.untrack_warning(move || format!("all trace bytes size: {trace_size}"));
                 }
             }
 
