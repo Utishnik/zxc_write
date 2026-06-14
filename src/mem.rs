@@ -738,7 +738,7 @@ pub fn scan_dynamic_mem_custom_filter<F: Fn(MEMORY_BASIC_INFORMATION) -> bool>(
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::Ordering;
 
-#[hotpath::measure]//
+#[hotpath::measure] //
 pub fn scan_dynamic_mem(
     pid: u32,
     jmp_len: usize,

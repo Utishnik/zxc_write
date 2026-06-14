@@ -259,44 +259,70 @@ unsafe fn get_base_addr_all_send<T>(find_res: &ExtractStrResult) -> BaseAddrResS
 
 unsafe fn get_base_addr_assci_send_pat_filter<T>(
     find_res: &ExtractStrResult,
-    pat: impl Fn(&String) -> bool,
-) -> Vec<SendablePtr<T>>
+    pat: impl Fn(&String) -> (bool, usize),
+) -> Vec<(SendablePtr<T>, usize)>
 //where T: Clone,
 {
+    /*
     find_res
         .ascii
         .iter()
         .filter(|&x| pat(&x.str))
         .map(|x| SendablePtr(x.base_addr as *const T))
         .collect::<Vec<_>>()
+    */
+    find_res
+        .ascii
+        .iter()
+        .map(|x| (x, pat(&x.str)))
+        .filter(|x| x.1.0)
+        .map(|x| (SendablePtr(x.0.base_addr as *const T), x.1.1))
+        .collect::<Vec<_>>()
 }
 
 unsafe fn get_base_addr_unicode_send_pat_filter<T>(
     find_res: &ExtractStrResult,
-    pat: impl Fn(&String) -> bool,
-) -> Vec<SendablePtr<T>>
+    pat: impl Fn(&String) -> (bool, usize),
+) -> Vec<(SendablePtr<T>, usize)>
 //where T: Clone,
 {
+    /*
     find_res
         .unicode
         .iter()
-        .filter(|&x| pat(&x.str))
+        .filter(|&x| pat(&x.str).0)
         .map(|x| SendablePtr(x.base_addr as *const T))
+        .collect::<Vec<_>>()
+        */
+    find_res
+        .unicode
+        .iter()
+        .map(|x| (x, pat(&x.str)))
+        .filter(|x| x.1.0)
+        .map(|x| (SendablePtr(x.0.base_addr as *const T), x.1.1))
         .collect::<Vec<_>>()
 }
 
 unsafe fn get_base_addr_all_send_pat_filter<T>(
     find_res: &ExtractStrResult,
-    pat: impl Fn(&String) -> bool + Clone,
-) -> BaseAddrResSend<T>
+    pat: impl Fn(&String) -> (bool, usize) + Clone,
+) -> BaseAddrResSendPos<T>
 //where T: Clone,
 {
     let res_ascii = unsafe { get_base_addr_assci_send_pat_filter(find_res, pat.clone()) };
     let res_unicode = unsafe { get_base_addr_unicode_send_pat_filter(find_res, pat) };
-    BaseAddrResSend::<T> {
+    BaseAddrResSendPos::<T> {
         assci: res_ascii,
         unicode: res_unicode,
     }
+}
+
+#[derive(Clone)]
+struct BaseAddrResSendPos<T>
+//where T: Clone,
+{
+    pub assci: Vec<(SendablePtr<T>, usize)>,
+    pub unicode: Vec<(SendablePtr<T>, usize)>,
 }
 
 #[derive(Clone)]
@@ -307,7 +333,7 @@ struct BaseAddrResSend<T>
     pub unicode: Vec<SendablePtr<T>>,
 }
 
-impl<T> BaseAddrResSend<T> {
+impl<T> BaseAddrResSendPos<T> {
     pub fn with_capacity(&mut self, cap_assci: usize, cap_unicode: usize) {
         self.assci = Vec::with_capacity(cap_assci);
         self.unicode = Vec::with_capacity(cap_unicode);
@@ -343,6 +369,14 @@ struct ScanStrAllResCvoid {
 }
 
 #[derive(Clone)]
+struct ScanStrAllResSendPos<T>
+//where T: Clone,
+{
+    pub ssr: ScanStrRes, //ub!
+    pub finds_addr: BaseAddrResSendPos<T>,
+}
+
+#[derive(Clone)]
 struct ScanStrAllResSend<T>
 //where T: Clone,
 {
@@ -350,7 +384,7 @@ struct ScanStrAllResSend<T>
     pub finds_addr: BaseAddrResSend<T>,
 }
 
-impl<T> ScanStrAllResSend<T> {
+impl<T> ScanStrAllResSendPos<T> {
     pub fn with_capacity(&mut self, cap_ssr: usize, cap_finds_addr: usize) {
         self.finds_addr.with_capacity(cap_ssr, cap_ssr);
         self.ssr.with_capacity(cap_finds_addr, cap_finds_addr);
@@ -364,7 +398,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
     log: Arc<Option<Mutex<Logger>>>,
     min_len: usize,
     max_len: Option<usize>,
-) -> Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> {
+) -> Result<Vec<ScanStrAllResSendPos<SendableCvoidPtrMut>>, win_core::Error> {
     let childs = get_child_processes(pid);
     if let Err(e) = childs {
         println!("[ERROR] get_childs {:?}", e);
@@ -380,9 +414,9 @@ unsafe fn get_childs_dyn_pat_cvoid(
             })
             .collect::<Vec<String>>();
         let cnt_pids = pids_vec.len();
-        let mut ret: Vec<ScanStrAllResSend<SendableCvoidPtrMut>> = Vec::with_capacity(cnt_pids);
+        let mut ret: Vec<ScanStrAllResSendPos<SendableCvoidPtrMut>> = Vec::with_capacity(cnt_pids);
         let ret_raw_ptr = ret.as_mut_ptr();
-        let ret_ptr = SendablePtrMut::<ScanStrAllResSend<SendableCvoidPtrMut>>(ret_raw_ptr);
+        let ret_ptr = SendablePtrMut::<ScanStrAllResSendPos<SendableCvoidPtrMut>>(ret_raw_ptr);
 
         println!("{}", names.vec_string(DEFAULT_FORMAT_RULE));
         println!("CNT Pids:  {}", cnt_pids);
@@ -441,7 +475,12 @@ unsafe fn get_childs_dyn_pat_cvoid(
 
                     let finds_addr = unsafe {
                         get_base_addr_all_send_pat_filter::<SendableCvoidPtrMut>(&find_res, |x| {
-                            memchr::memmem::find(x.as_bytes(), pat_clone.as_bytes()).is_some()
+                            let find = memchr::memmem::find(x.as_bytes(), pat_clone.as_bytes());
+                            if let Some(x) = find {
+                                (true, x)
+                            } else {
+                                (false, 0)
+                            }
                         })
                     };
                     //бля адресса нефильтрую
@@ -529,7 +568,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
 pub struct ScanStrAllResSendArena<T> {
     pub finds_ascii: Arena<Vec<String>>,
     pub finds_unicode: Arena<Vec<String>>,
-    pub finds_addr: Arena<BaseAddrResSend<T>>,
+    pub finds_addr: Arena<BaseAddrResSendPos<T>>,
 }
 
 #[hotpath::measure]
@@ -607,20 +646,34 @@ unsafe fn get_childs_dyn_pats_cvoid(
                     //от memchr конечно профита нет но пофиг
                     #[allow(clippy::search_is_some)]
                     for item in pat_clone.iter() {
+                        let mut find_uc_res: Option<usize> = None;
                         let finds_uc: Vec<String> = find_res
                             .unicode
                             .iter()
                             .filter(|x| {
-                                memchr::memmem::find(x.str.as_bytes(), item.as_bytes()).is_some()
+                                let find = memchr::memmem::find(x.str.as_bytes(), item.as_bytes());
+                                if let Some(x) = find {
+                                    find_uc_res = Some(x);
+                                    return true;
+                                }
+                                find_uc_res = None;
+                                false
                             })
                             .map(|x| x.str.clone())
                             .collect();
+                        let mut find_ascii_res: Option<usize> = None;
                         #[allow(clippy::search_is_some)]
                         let finds_ascii: Vec<String> = find_res
                             .ascii
                             .iter()
                             .filter(|x| {
-                                memchr::memmem::find(x.str.as_bytes(), item.as_bytes()).is_some()
+                                let find = memchr::memmem::find(x.str.as_bytes(), item.as_bytes());
+                                if let Some(x) = find {
+                                    find_ascii_res = Some(x);
+                                    return true;
+                                }
+                                find_ascii_res = None;
+                                false
                             })
                             .map(|x| x.str.clone())
                             .collect();
@@ -635,7 +688,14 @@ unsafe fn get_childs_dyn_pats_cvoid(
                         let finds_addr = unsafe {
                             get_base_addr_all_send_pat_filter::<SendableCvoidPtrMut>(
                                 &find_res,
-                                |x| memchr::memmem::find(x.as_bytes(), item.as_bytes()).is_some(),
+                                |x| {
+                                    let find = memchr::memmem::find(x.as_bytes(), item.as_bytes());
+                                    if let Some(x) = find {
+                                        (true, x)
+                                    } else {
+                                        (false, 0)
+                                    }
+                                },
                             )
                         };
                         finds_addr_arena.alloc(finds_addr);
@@ -663,9 +723,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
                                 });
                                 let an_atomic_clone = an_atomic.clone();
                                 guard.untrack_info(move || {
-                                    format!(
-                                        "number: {}",an_atomic_clone.load(Ordering::Relaxed)
-                                    )
+                                    format!("number: {}", an_atomic_clone.load(Ordering::Relaxed))
                                 });
                                 /*
                                 let clone_finds_ascii = finds_ascii.clone();
@@ -696,10 +754,9 @@ unsafe fn get_childs_dyn_pats_cvoid(
                         (*inner).finds_addr = finds_addr_arena;
                         (*inner).finds_ascii = finds_ascii_arena;
                         (*inner).finds_unicode = finds_uc_arena;
-                        
+
                         //#[cfg(debug_assertions)]
                         // (*inner).finds_addr.assci.iter().for_each(|x|println!("addres ascii: {:p}",x.0));
-
                     }
                     an_atomic.fetch_add(1, Ordering::Relaxed);
                 }
@@ -844,11 +901,18 @@ pub struct MorePatsExtractRes {
     pub extract_addr_only_unicode: Vec<Vec<SendablePtr<SendableCvoidPtrMut>>>,
 }
 
+pub struct MorePatsExtractResPos {
+    pub extract_assci_str: Vec<Vec<Vec<String>>>,
+    pub extract_unicode_str: Vec<Vec<Vec<String>>>,
+    pub extract_addr_only_ascii: Vec<Vec<(SendablePtr<SendableCvoidPtrMut>, usize)>>,
+    pub extract_addr_only_unicode: Vec<Vec<(SendablePtr<SendableCvoidPtrMut>, usize)>>,
+}
+
 #[hotpath::measure]
 fn more_pats(
     log: Arc<Option<Mutex<Logger>>>,
     pid: u32,
-) -> windows::core::Result<MorePatsExtractRes> {
+) -> windows::core::Result<MorePatsExtractResPos> {
     let res_dyn_pats;
     unsafe {
         res_dyn_pats = get_childs_dyn_pats_cvoid(
@@ -890,7 +954,7 @@ fn more_pats(
         .flatten()
         .map(|x| x.unicode.clone())
         .collect();
-    Ok(MorePatsExtractRes {
+    Ok(MorePatsExtractResPos {
         extract_assci_str,
         extract_unicode_str,
         extract_addr_only_ascii,
@@ -944,10 +1008,10 @@ fn more_pats_run(name: &str) {
             .map(|x| {
                 x.iter()
                     .map(|y| {
-                        if y.0.is_null() {
+                        if y.0.0.is_null() {
                             "".to_string()
                         } else {
-                            format!("{:p}", y.0)
+                            format!("{:p}", y.0.0)
                         }
                     })
                     .collect::<Vec<_>>()
@@ -959,10 +1023,10 @@ fn more_pats_run(name: &str) {
             .map(|x| {
                 x.iter()
                     .map(|y| {
-                        if y.0.is_null() {
+                        if y.0.0.is_null() {
                             "".to_string()
                         } else {
-                            format!("{:p}", y.0)
+                            format!("{:p}", y.0.0)
                         }
                     })
                     .collect::<Vec<_>>()
@@ -1017,7 +1081,7 @@ fn more_pats_test() {
 
 #[hotpath::main]
 fn main() {
-    /* 
+    /*
     let build_log = Logger::safe_builder(None, None);
     let unwrap = match build_log {
         LoggerRes::Ok(ok) => ok.ok(),
