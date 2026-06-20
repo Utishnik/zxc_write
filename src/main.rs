@@ -552,12 +552,12 @@ unsafe fn get_childs_dyn_pat_cvoid(
             vec_cur += len_job;
             ret_len += len_job;
         }
-        unsafe {
-            ret.set_len(ret_len);
-        }
         while let load = an_atomic.load(Ordering::Relaxed)
             && load != cnt_pids
         {}
+        unsafe {
+            ret.set_len(ret_len);
+        }
         println!("log");
         let _ = shutdown_logger(log);
         Ok(ret)
@@ -571,6 +571,14 @@ pub struct ScanStrAllResSendArena<T> {
     pub finds_addr: Arena<BaseAddrResSendPos<T>>,
 }
 
+pub struct ScanStrAllResPosSendArena<T> {
+    pub finds_ascii: Arena<Vec<String>>,
+    pub finds_unicode: Arena<Vec<String>>,
+    pub finds_addr: Arena<BaseAddrResSendPos<T>>,
+    pub find_ascii_res_pos_arena: Arena<Option<usize>>,
+    pub find_uc_res_pos_arena: Arena<Option<usize>>,
+}
+
 #[hotpath::measure]
 unsafe fn get_childs_dyn_pats_cvoid(
     pid: u32,
@@ -578,7 +586,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
     log: Arc<Option<Mutex<Logger>>>,
     min_len: usize,
     max_len: Option<usize>,
-) -> Result<Vec<ScanStrAllResSendArena<SendableCvoidPtrMut>>, win_core::Error> {
+) -> Result<Vec<ScanStrAllResPosSendArena<SendableCvoidPtrMut>>, win_core::Error> {
     let childs = get_child_processes(pid);
     if let Err(e) = childs {
         println!("[ERROR] get_childs {:?}", e);
@@ -596,7 +604,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
         let cnt_pids = pids_vec.len();
         let mut ret = Vec::with_capacity(cnt_pids);
         let ret_raw_ptr = ret.as_mut_ptr();
-        let ret_ptr = SendablePtrMut::<ScanStrAllResSendArena<SendableCvoidPtrMut>>(ret_raw_ptr);
+        let ret_ptr = SendablePtrMut::<ScanStrAllResPosSendArena<SendableCvoidPtrMut>>(ret_raw_ptr);
 
         println!("{}", names.vec_string(DEFAULT_FORMAT_RULE));
         println!("CNT Pids:  {}", cnt_pids);
@@ -642,26 +650,27 @@ unsafe fn get_childs_dyn_pats_cvoid(
                     let finds_uc_arena = Arena::new();
                     let finds_ascii_arena = Arena::new();
                     let finds_addr_arena = Arena::new();
+                    let find_ascii_res_pos_arena = Arena::new();
+                    let find_uc_res_pos_arena = Arena::new();
 
                     //от memchr конечно профита нет но пофиг
                     #[allow(clippy::search_is_some)]
                     for item in pat_clone.iter() {
-                        let mut find_uc_res: Option<usize> = None;
+                        let mut find_uc_res_pos: Option<usize> = None;
                         let finds_uc: Vec<String> = find_res
                             .unicode
                             .iter()
                             .filter(|x| {
                                 let find = memchr::memmem::find(x.str.as_bytes(), item.as_bytes());
                                 if let Some(x) = find {
-                                    find_uc_res = Some(x);
+                                    find_uc_res_pos = Some(x);
                                     return true;
                                 }
-                                find_uc_res = None;
                                 false
                             })
                             .map(|x| x.str.clone())
                             .collect();
-                        let mut find_ascii_res: Option<usize> = None;
+                        let mut find_ascii_res_pos: Option<usize> = None;
                         #[allow(clippy::search_is_some)]
                         let finds_ascii: Vec<String> = find_res
                             .ascii
@@ -669,10 +678,9 @@ unsafe fn get_childs_dyn_pats_cvoid(
                             .filter(|x| {
                                 let find = memchr::memmem::find(x.str.as_bytes(), item.as_bytes());
                                 if let Some(x) = find {
-                                    find_ascii_res = Some(x);
+                                    find_ascii_res_pos = Some(x);
                                     return true;
                                 }
-                                find_ascii_res = None;
                                 false
                             })
                             .map(|x| x.str.clone())
@@ -684,17 +692,15 @@ unsafe fn get_childs_dyn_pats_cvoid(
 
                         finds_ascii_arena.alloc(finds_ascii);
                         finds_uc_arena.alloc(finds_uc);
+                        find_ascii_res_pos_arena.alloc(find_ascii_res_pos);
+                        find_uc_res_pos_arena.alloc(find_uc_res_pos);
 
                         let finds_addr = unsafe {
                             get_base_addr_all_send_pat_filter::<SendableCvoidPtrMut>(
                                 &find_res,
                                 |x| {
-                                    let find = memchr::memmem::find(x.as_bytes(), item.as_bytes());
-                                    if let Some(x) = find {
-                                        (true, x)
-                                    } else {
-                                        (false, 0)
-                                    }
+                                    memchr::memmem::find(x.as_bytes(), item.as_bytes())
+                                        .map_or((false, 0), |pos| (true, pos))
                                 },
                             )
                         };
@@ -754,6 +760,8 @@ unsafe fn get_childs_dyn_pats_cvoid(
                         (*inner).finds_addr = finds_addr_arena;
                         (*inner).finds_ascii = finds_ascii_arena;
                         (*inner).finds_unicode = finds_uc_arena;
+                        (*inner).find_ascii_res_pos_arena = find_ascii_res_pos_arena;
+                        (*inner).find_uc_res_pos_arena = find_uc_res_pos_arena;
 
                         //#[cfg(debug_assertions)]
                         // (*inner).finds_addr.assci.iter().for_each(|x|println!("addres ascii: {:p}",x.0));
@@ -772,12 +780,12 @@ unsafe fn get_childs_dyn_pats_cvoid(
             vec_cur += len_job;
             ret_len += len_job;
         }
-        unsafe {
-            ret.set_len(ret_len);
-        }
         while let load = an_atomic.load(Ordering::Relaxed)
             && load != cnt_pids
         {}
+        unsafe {
+            ret.set_len(ret_len);
+        }
         println!("log");
         let _ = shutdown_logger(log);
         Ok(ret)
@@ -815,6 +823,7 @@ unsafe fn get_childs_cvoid(
         let mut ret: Vec<ScanStrAllResSend<SendableCvoidPtrMut>> = Vec::with_capacity(cnt_pids);
         let ret_raw_ptr = ret.as_mut_ptr();
         let ret_ptr = SendablePtrMut::<ScanStrAllResSend<SendableCvoidPtrMut>>(ret_raw_ptr);
+        let mut ret_len = 0;
 
         let jobs_vec = jobs_disp(cnt_job, pids_vec);
         for jobs in jobs_vec.into_iter() {
@@ -862,10 +871,14 @@ unsafe fn get_childs_cvoid(
                 }
             });
             vec_cur += len_job;
+            ret_len += len_job;
         }
         while let load = an_atomic.load(Ordering::Relaxed)
             && load != cnt_pids
         {}
+        unsafe {
+            ret.set_len(ret_len);
+        }
         let _ = shutdown_logger(log);
         Ok(ret)
     } else {
