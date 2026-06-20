@@ -9,6 +9,7 @@ use std::io::Write;
 use std::sync::atomic::AtomicUsize;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, LazyLock, Mutex, RwLock};
+use std::thread::JoinHandle;
 
 const CHAN_SIZE: usize = 1024;
 
@@ -23,21 +24,28 @@ pub enum LogTo {
     File,
     InRam,
 }
+
 struct LogEntry {
     closure: Box<dyn FnOnce() -> String + Send>,
     log_to: LogTo,
 }
 
 pub struct Logger {
-    sx: Cell<crossfire::MTx<mpsc::Array<LogEntry>>>,
+    /// `Option` чтобы `shutdown()` мог закрыть канал, дропнув MTx.
+    sx: Cell<Option<crossfire::MTx<mpsc::Array<LogEntry>>>>,
     file: Option<File>,
     log_to: LogTo,
     with_time: bool,
     shutdown: Arc<AtomicBool>,
     mem_ptr: Arc<RwLock<Vec<String>>>,
+    /// Считает только сообщения "в полёте" — после `send` и до обработки writer-ом.
     sender_cnt: Arc<AtomicUsize>,
+    /// Хэндл writer-потока чтобы корректно его дождаться в `shutdown`.
+    thread_handle: Option<JoinHandle<()>>,
 }
 
+/// Оставлено для совместимости с публичным API. Внутренне больше не используется —
+/// writer-поток сам декрементирует счётчик после обработки сообщения.
 #[derive(Debug)]
 pub struct SenderCntGuard(pub Arc<AtomicUsize>);
 
@@ -66,11 +74,17 @@ impl Logger {
         let (sx, rx) = mpsc::bounded_blocking::<LogEntry>(CHAN_SIZE);
 
         let shutdown_flag = Arc::new(AtomicBool::new(false));
-        let shutdown_flag_clone = shutdown_flag.clone();
+        // `shutdown_flag` остаётся в публичной структуре Logger на случай
+        // если внешний код захочет проверить состояние, но writer-поток больше
+        // его не использует — выход определяется Err от закрытого канала.
+        let _shutdown_flag_for_logger = shutdown_flag.clone();
         let buf_ram: Arc<RwLock<Vec<String>>> = Arc::new(RwLock::new(Vec::new())); //rwlock
         let thread_clone = buf_ram.clone();
         let in_ram = log_in_ram.is_some();
-        std::thread::spawn(move || {
+        let sender_cnt = Arc::new(AtomicUsize::new(0));
+        let sender_cnt_clone = sender_cnt.clone();
+
+        let thread_handle = std::thread::spawn(move || {
             let file = log_op.map(Self::open_log_file);
             let checked_file: Option<File> = if let Some(ref x) = file
                 && x.is_err()
@@ -85,15 +99,11 @@ impl Logger {
                 None
             };
             let mut file = checked_file;
+
             loop {
                 match rx.recv() {
-                    Err(e) => {
-                        if shutdown_flag_clone.load(Ordering::Acquire) {
-                            break;
-                        } else {
-                            println!("[ERROR] channel debug err: {:?}", e);
-                        }
-                    }
+                    // Канал закрыт со стороны Logger::shutdown() — корректный выход.
+                    Err(_) => break,
                     Ok(entry) => {
                         let mut message = (entry.closure)();
 
@@ -102,8 +112,12 @@ impl Logger {
                                 if file.as_mut().is_some() {
                                     message.push('\n');
                                     let f = unsafe { file.as_mut().unwrap_unchecked() };
-                                    f.write_all(message.as_bytes()).unwrap();
-                                    f.flush().unwrap();
+                                    if let Err(e) = f.write_all(message.as_bytes()) {
+                                        eprintln!("[LOGGER] write_all failed: {:?}", e);
+                                    }
+                                    if let Err(e) = f.flush() {
+                                        eprintln!("[LOGGER] flush failed: {:?}", e);
+                                    }
                                 }
                             }
                             LogTo::Ephemeral => println!("{}", message),
@@ -121,9 +135,14 @@ impl Logger {
                                 }
                             }
                         };
+
+                        // Сообщение обработано — уменьшаем счётчик "в полёте".
+                        sender_cnt_clone.fetch_sub(1, Ordering::Relaxed);
                     }
                 }
             }
+
+            // Дренаж внутреннего буфера в переданный Vec — после остановки приёма.
             let r_guard = thread_clone.read();
             match r_guard {
                 Ok(ref r_guard) => {
@@ -142,8 +161,13 @@ impl Logger {
                                     }
                                 }
                             }
+                            // in_ram == true ⇔ log_in_ram.is_some(), так что сюда
+                            // попасть не должны. Пишем в stderr вместо паники,
+                            // чтобы не валить процесс из-за внутреннего бага.
                             None => {
-                                unreachable!()
+                                eprintln!(
+                                    "[LOGGER] internal inconsistency: in_ram=true but log_in_ram=None"
+                                );
                             }
                         }
                     }
@@ -167,15 +191,17 @@ impl Logger {
         };
         let mem_ptr = buf_ram;
         Ok(Self {
-            sx: Cell::new(sx),
+            sx: Cell::new(Some(sx)),
             file,
             log_to: log_op.map_or(LogTo::Ephemeral, |_| LogTo::File),
             with_time: false,
             shutdown: shutdown_flag,
             mem_ptr,
-            sender_cnt: Arc::new(AtomicUsize::new(0)),
+            sender_cnt,
+            thread_handle: Some(thread_handle),
         })
     }
+
     fn open_log_file(op: LoggerFileOptions) -> Result<File, std::io::Error> {
         File::options()
             .write(true)
@@ -184,14 +210,30 @@ impl Logger {
             .open(op.path)
     }
 
+    /// Общая отправка сообщения в канал. Увеличивает `sender_cnt` ТОЛЬКО после
+    /// успешного `send` — writer-поток сам уменьшит его после обработки.
+    #[track_caller]
+    fn send_entry(&self, entry: LogEntry) {
+        unsafe {
+            let sx_opt = cell_borrow(&self.sx);
+            match sx_opt.as_ref() {
+                Some(sx) => match sx.send(entry) {
+                    Ok(_) => {
+                        self.sender_cnt.fetch_add(1, Ordering::Relaxed);
+                    }
+                    Err(_) => panic!("Logger thread died :("),
+                },
+                None => panic!("Logger already shut down"),
+            }
+        }
+    }
+
     #[track_caller]
     fn log<F, T>(&self, level: String, f: F)
     where
         F: FnOnce() -> T + Send + 'static,
         T: AsRef<str>,
     {
-        let _guard = SenderCntGuard(self.sender_cnt.clone());
-        self.sender_cnt.fetch_add(1, Ordering::Relaxed);
         let tt = self.with_time;
         let location = std::panic::Location::caller();
         let entry = LogEntry {
@@ -214,13 +256,7 @@ impl Logger {
             }),
             log_to: self.log_to.clone(),
         };
-
-        unsafe {
-            match cell_borrow(&self.sx).send(entry) {
-                Ok(_) => (),
-                Err(_) => panic!("Logger thread died :("),
-            }
-        }
+        self.send_entry(entry);
     }
 
     pub const fn with_time(mut self, time: bool) -> Self {
@@ -228,18 +264,42 @@ impl Logger {
         self
     }
 
-    /// Waits until all messages are logged
+    /// Корректно останавливает writer-поток:
+    /// 1) ждёт обработки всех сообщений в полёте;
+    /// 2) закрывает канал (дропает `MTx`) — writer получает `Err` и выходит;
+    /// 3) дожидается реального завершения writer-потока через `JoinHandle`.
     pub fn shutdown(&mut self) -> Result<(), std::io::Error> {
+        // Сигнализируем о намерении остановиться.
         self.shutdown.store(true, Ordering::Release);
+
+        // Ждём, пока writer обработает всё, что уже отправлено.
         while self.sender_cnt.load(Ordering::Relaxed) != 0 {
             std::thread::yield_now();
         }
 
+        // Закрываем канал: take() заменяет содержимое Cell на None,
+        // оригинальный MTx дропается → writer.recv() вернёт Err и break.
+        let _ = self.sx.get_mut().take();
+
+        // Дожидаемся реального завершения writer-потока.
+        if let Some(handle) = self.thread_handle.take() {
+            match handle.join() {
+                Ok(()) => {}
+                Err(_) => {
+                    return Err(std::io::Error::new(
+                        std::io::ErrorKind::Other,
+                        "Logger writer thread panicked",
+                    ));
+                }
+            }
+        }
+
         if let Some(ref file) = self.file {
-            file.sync_all()?
+            file.sync_all()?;
         }
         Ok(())
     }
+
     #[track_caller]
     pub fn info<F, T>(&self, f: F)
     where
@@ -259,6 +319,7 @@ impl Logger {
         let err = LazyLock::force(&ERR_MSG).clone();
         self.log(err, f);
     }
+
     #[track_caller]
     pub fn debug<F, T>(&self, f: F)
     where
@@ -280,6 +341,7 @@ impl Logger {
     }
 
     //untrack
+    #[track_caller]
     fn untrack_log<F, T>(&self, level: String, f: F)
     where
         F: FnOnce() -> T + Send + 'static,
@@ -300,15 +362,10 @@ impl Logger {
             }),
             log_to: self.log_to.clone(),
         };
-
-        unsafe {
-            match cell_borrow(&self.sx).send(entry) {
-                Ok(_) => (),
-                Err(_) => panic!("Logger thread died :("),
-            }
-        }
+        self.send_entry(entry);
     }
 
+    #[track_caller]
     pub fn untrack_info<F, T>(&self, f: F)
     where
         F: FnOnce() -> T + Send + 'static,
@@ -318,6 +375,7 @@ impl Logger {
         self.untrack_log(info, f);
     }
 
+    #[track_caller]
     pub fn untrack_error<F, T>(&self, f: F)
     where
         F: FnOnce() -> T + Send + 'static,
@@ -326,6 +384,8 @@ impl Logger {
         let err = LazyLock::force(&ERR_MSG).clone();
         self.untrack_log(err, f);
     }
+
+    #[track_caller]
     pub fn untrack_debug<F, T>(&self, f: F)
     where
         F: FnOnce() -> T + Send + 'static,
@@ -335,6 +395,7 @@ impl Logger {
         self.untrack_log(dbg, f);
     }
 
+    #[track_caller]
     pub fn untrack_warning<F, T>(&self, f: F)
     where
         F: FnOnce() -> T + Send + 'static,
