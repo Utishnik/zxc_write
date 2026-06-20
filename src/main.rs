@@ -912,6 +912,8 @@ pub struct MorePatsExtractRes {
     pub extract_unicode_str: Vec<Vec<Vec<String>>>,
     pub extract_addr_only_ascii: Vec<Vec<SendablePtr<SendableCvoidPtrMut>>>,
     pub extract_addr_only_unicode: Vec<Vec<SendablePtr<SendableCvoidPtrMut>>>,
+    pub extract_find_pos_ascii: Vec<Vec<Option<usize>>>,
+    pub extract_find_pos_unicode: Vec<Vec<Option<usize>>>,
 }
 
 pub struct MorePatsExtractResPos {
@@ -957,6 +959,14 @@ fn more_pats(
         .iter_mut()
         .map(|x| make_vec_to_borrow_arena(&mut x.finds_addr))
         .collect();
+    let extract_find_pos_ascii: Vec<_> = res_dyn_pats
+        .iter_mut()
+        .map(|x| make_vec_to_borrow_arena(&mut x.find_ascii_res_pos_arena))
+        .collect();
+    let extract_find_pos_unicode: Vec<_> = res_dyn_pats
+        .iter_mut()
+        .map(|x| make_vec_to_borrow_arena(&mut x.find_uc_res_pos_arena))
+        .collect();
     drop(res_dyn_pats);
 
     let extract_addr_only_ascii: Vec<_> = extract_addr
@@ -969,11 +979,14 @@ fn more_pats(
         .flatten()
         .map(|x| x.unicode.clone())
         .collect();
+
     Ok(MorePatsExtractRes {
         extract_assci_str,
         extract_unicode_str,
         extract_addr_only_ascii,
         extract_addr_only_unicode,
+        extract_find_pos_ascii,
+        extract_find_pos_unicode,
     })
 }
 
@@ -1047,6 +1060,8 @@ fn more_pats_run(name: &str) {
                     .collect::<Vec<_>>()
             })
             .collect();
+        let extract_ascii_pos_iter = res.extract_find_pos_ascii.iter();
+        let extract_unicode_pos_iter = res.extract_find_pos_unicode.iter();
         let str_assci_addr = fmt_assci_addr
             .iter()
             .flatten()
@@ -1060,27 +1075,29 @@ fn more_pats_run(name: &str) {
         println!("ASSCI ADDR:  {}", str_assci_addr);
         println!("UNICODE ADDR:  {}", str_unicode_addr);
         println!("\n\nstrs: ");
-        for item in res.extract_assci_str.iter().flatten() {
+        for (item,pos) in res.extract_assci_str.iter().flatten().zip(extract_ascii_pos_iter.flatten()) {
             if item.len() < 64 {
                 println!("ascii: {}", item.vec_string(DEFAULT_FORMAT_RULE));
             } else {
+                let pos_unwrap = pos.unwrap_or_default();
                 println!(
                     "ascii: {} ...",
                     item.iter()
-                        .map(|x| x.get(0..63).unwrap_or_default())
+                        .map(|x| x.get(pos_unwrap..63).unwrap_or_default())
                         .collect::<Vec<_>>()
                         .vec_string(DEFAULT_FORMAT_RULE)
                 );
             }
         }
-        for item in res.extract_unicode_str.iter().flatten() {
+        for  (item,pos) in res.extract_assci_str.iter().flatten().zip(extract_unicode_pos_iter.flatten())  {
             if item.len() < 64 {
                 println!("unicode: {}", item.vec_string(DEFAULT_FORMAT_RULE));
             } else {
+                let pos_unwrap = pos.unwrap_or_default();
                 println!(
                     "unicode: {} ...",
                     item.iter()
-                        .map(|x| x.get(0..63).unwrap_or_default())
+                        .map(|x| x.get((pos_unwrap)..63).unwrap_or_default())
                         .collect::<Vec<_>>()
                         .vec_string(DEFAULT_FORMAT_RULE)
                 );
