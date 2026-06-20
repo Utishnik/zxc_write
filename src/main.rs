@@ -333,6 +333,13 @@ struct BaseAddrResSend<T>
     pub unicode: Vec<SendablePtr<T>>,
 }
 
+impl<T> BaseAddrResSend<T> {
+    pub fn with_capacity(&mut self, cap_assci: usize, cap_unicode: usize) {
+        self.assci = Vec::with_capacity(cap_assci);
+        self.unicode = Vec::with_capacity(cap_unicode);
+    }
+}
+
 impl<T> BaseAddrResSendPos<T> {
     pub fn with_capacity(&mut self, cap_assci: usize, cap_unicode: usize) {
         self.assci = Vec::with_capacity(cap_assci);
@@ -574,7 +581,7 @@ pub struct ScanStrAllResSendArena<T> {
 pub struct ScanStrAllResPosSendArena<T> {
     pub finds_ascii: Arena<Vec<String>>,
     pub finds_unicode: Arena<Vec<String>>,
-    pub finds_addr: Arena<BaseAddrResSendPos<T>>,
+    pub finds_addr: Arena<BaseAddrResSend<T>>,
     pub find_ascii_res_pos_arena: Arena<Option<usize>>,
     pub find_uc_res_pos_arena: Arena<Option<usize>>,
 }
@@ -695,15 +702,8 @@ unsafe fn get_childs_dyn_pats_cvoid(
                         find_ascii_res_pos_arena.alloc(find_ascii_res_pos);
                         find_uc_res_pos_arena.alloc(find_uc_res_pos);
 
-                        let finds_addr = unsafe {
-                            get_base_addr_all_send_pat_filter::<SendableCvoidPtrMut>(
-                                &find_res,
-                                |x| {
-                                    memchr::memmem::find(x.as_bytes(), item.as_bytes())
-                                        .map_or((false, 0), |pos| (true, pos))
-                                },
-                            )
-                        };
+                        let finds_addr =
+                            unsafe { get_base_addr_all_send::<SendableCvoidPtrMut>(&find_res) };
                         finds_addr_arena.alloc(finds_addr);
                         //бля адресса нефильтрую
                         //#[cfg(debug_assertions)]
@@ -921,11 +921,13 @@ pub struct MorePatsExtractResPos {
     pub extract_addr_only_unicode: Vec<Vec<(SendablePtr<SendableCvoidPtrMut>, usize)>>,
 }
 
+//надо сделать еще одну версию которая не будет смешивать
+//<Vec<(SendablePtr<SendableCvoidPtrMut>, usize)> usize а usize как отдельная арена
 #[hotpath::measure]
 fn more_pats(
     log: Arc<Option<Mutex<Logger>>>,
     pid: u32,
-) -> windows::core::Result<MorePatsExtractResPos> {
+) -> windows::core::Result<MorePatsExtractRes> {
     let res_dyn_pats;
     unsafe {
         res_dyn_pats = get_childs_dyn_pats_cvoid(
@@ -967,7 +969,7 @@ fn more_pats(
         .flatten()
         .map(|x| x.unicode.clone())
         .collect();
-    Ok(MorePatsExtractResPos {
+    Ok(MorePatsExtractRes {
         extract_assci_str,
         extract_unicode_str,
         extract_addr_only_ascii,
@@ -1021,10 +1023,10 @@ fn more_pats_run(name: &str) {
             .map(|x| {
                 x.iter()
                     .map(|y| {
-                        if y.0.0.is_null() {
+                        if y.0.is_null() {
                             "".to_string()
                         } else {
-                            format!("{:p}", y.0.0)
+                            format!("{:p}", y.0)
                         }
                     })
                     .collect::<Vec<_>>()
@@ -1036,10 +1038,10 @@ fn more_pats_run(name: &str) {
             .map(|x| {
                 x.iter()
                     .map(|y| {
-                        if y.0.0.is_null() {
+                        if y.0.is_null() {
                             "".to_string()
                         } else {
-                            format!("{:p}", y.0.0)
+                            format!("{:p}", y.0)
                         }
                     })
                     .collect::<Vec<_>>()
