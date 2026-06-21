@@ -1062,44 +1062,93 @@ fn more_pats_run(name: &str) {
             .collect();
         let extract_ascii_pos_iter = res.extract_find_pos_ascii.iter();
         let extract_unicode_pos_iter = res.extract_find_pos_unicode.iter();
-        let str_assci_addr = fmt_assci_addr
+        let str_assci_addr = VecString::vec_string(&fmt_assci_addr
             .iter()
             .flatten()
             .collect::<Vec<_>>()
-            .vec_string(DEFAULT_FORMAT_RULE);
-        let str_unicode_addr = fmt_unicode_addr
+            ,DEFAULT_FORMAT_RULE);
+        let str_unicode_addr = VecString::vec_string(&fmt_unicode_addr
             .iter()
             .flatten()
-            .collect::<Vec<_>>()
-            .vec_string(DEFAULT_FORMAT_RULE);
+            .collect::<Vec<_>>(),
+            DEFAULT_FORMAT_RULE
+            );
         println!("ASSCI ADDR:  {}", str_assci_addr);
         println!("UNICODE ADDR:  {}", str_unicode_addr);
         println!("\n\nstrs: ");
-        for (item,pos) in res.extract_assci_str.iter().flatten().zip(extract_ascii_pos_iter.flatten()) {
+
+        for (item, pos) in res
+            .extract_assci_str
+            .iter()
+            .flatten()
+            .zip(extract_ascii_pos_iter.flatten())
+        {
             if item.len() < 64 {
-                println!("ascii: {}", item.vec_string(DEFAULT_FORMAT_RULE));
+                println!("ascii: {}",VecString::vec_string(item, DEFAULT_FORMAT_RULE)
+);
             } else {
                 let pos_unwrap = pos.unwrap_or_default();
+                let format_rule = |val: &str, index: usize, len: usize| -> String {
+                    if index == 0 {
+                        if val.len() < 64 {
+                            format!("[{}", val)
+                        } else {
+                            format!("[{}", val.get(pos_unwrap..=63).unwrap_or_default())
+                        }
+                    } else if index != len - 1 {
+                        format!(", {}", val)
+                    } else {
+                        format!(", {}]", val)
+                    }
+                };
                 println!(
                     "ascii: {} ...",
-                    item.iter()
-                        .map(|x| x.get(pos_unwrap..63).unwrap_or_default())
-                        .collect::<Vec<_>>()
-                        .vec_string(DEFAULT_FORMAT_RULE)
+                    VecStringFn::vec_string(
+                        &item
+                            .iter()
+                            .map(|x| x.get((pos_unwrap)..63).unwrap_or_default())
+                            .collect::<Vec<_>>(),
+                        format_rule
+                    )
                 );
             }
         }
-        for  (item,pos) in res.extract_assci_str.iter().flatten().zip(extract_unicode_pos_iter.flatten())  {
+        for (item, pos) in res
+            .extract_assci_str
+            .iter()
+            .flatten()
+            .zip(extract_unicode_pos_iter.flatten())
+        {
             if item.len() < 64 {
-                println!("unicode: {}", item.vec_string(DEFAULT_FORMAT_RULE));
+                println!(
+                    "unicode: {}",
+                    VecString::vec_string(item, DEFAULT_FORMAT_RULE)
+                );
             } else {
                 let pos_unwrap = pos.unwrap_or_default();
+                let format_rule = |val: &str, index: usize, len: usize| -> String {
+                    if index == 0 {
+                        if val.len() < 64 {
+                            format!("[{}", val)
+                        } else {
+                            format!("[{}", val.get(pos_unwrap..=63).unwrap_or_default())
+                        }
+                    } else if index != len - 1 {
+                        format!(", {}", val)
+                    } else {
+                        format!(", {}]", val)
+                    }
+                };
+
                 println!(
                     "unicode: {} ...",
-                    item.iter()
-                        .map(|x| x.get((pos_unwrap)..63).unwrap_or_default())
-                        .collect::<Vec<_>>()
-                        .vec_string(DEFAULT_FORMAT_RULE)
+                    VecStringFn::vec_string(
+                        &item
+                            .iter()
+                            .map(|x| x.get((pos_unwrap)..63).unwrap_or_default())
+                            .collect::<Vec<_>>(),
+                        format_rule
+                    )
                 );
             }
         }
