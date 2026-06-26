@@ -588,6 +588,27 @@ pub struct ScanStrAllResPosSendArena<T> {
     pub find_uc_res_pos_arena: Arena<Vec<Option<usize>>>,
 }
 
+type FindPatRes<T> = Vec<T>;
+type FindPatsResArena<T> = Arena<Vec<T>>;
+type PosFind = Option<usize>;
+
+#[repr(transparent)]
+#[derive(Clone)]
+pub struct FindPatResObj<T>(pub Vec<T>);
+
+#[repr(transparent)]
+pub struct FindPatsResArenaObj<T>(pub Arena<Vec<T>>);
+
+#[repr(transparent)]
+pub struct PosFindObj(pub Option<usize>);
+
+
+impl<T: core::fmt::Display> VecString for FindPatResObj<T> {
+    fn vec_string(&self, format_rule: FormatRuleFn) -> String {
+        VecString::vec_string(&self.0, format_rule)
+    }
+}
+
 #[hotpath::measure]
 unsafe fn get_childs_dyn_pats_cvoid(
     pid: u32,
@@ -656,8 +677,8 @@ unsafe fn get_childs_dyn_pats_cvoid(
                     }
                     let find_res = find_res.unwrap();
 
-                    let finds_uc_arena = Arena::new();
-                    let finds_ascii_arena = Arena::new();
+                    let finds_uc_arena: FindPatsResArena<String> = Arena::new();
+                    let finds_ascii_arena: FindPatsResArena<String> = Arena::new();
                     let finds_addr_arena = Arena::new();
                     let find_ascii_res_pos_arena = Arena::new();
                     let find_uc_res_pos_arena = Arena::new();
@@ -665,8 +686,9 @@ unsafe fn get_childs_dyn_pats_cvoid(
                     //от memchr конечно профита нет но пофиг
                     #[allow(clippy::search_is_some)]
                     for item in pat_clone.iter() {
-                        let mut find_uc_res_pos: Vec<Option<usize>> = Vec::new();
-                        let finds_uc: Vec<String> = find_res
+                        let mut find_uc_res_pos: FindPatRes<PosFind> =
+                            Vec::with_capacity(find_res.unicode.len() / 2);
+                        let finds_uc: FindPatResObj<String> = FindPatResObj(find_res
                             .unicode
                             .iter()
                             .filter(|x| {
@@ -679,10 +701,11 @@ unsafe fn get_childs_dyn_pats_cvoid(
                                 false
                             })
                             .map(|x| x.str.clone())
-                            .collect();
-                        let mut find_ascii_res_pos: Vec<Option<usize>> = Vec::new();
+                            .collect());
+                        let mut find_ascii_res_pos: FindPatRes<PosFind> =
+                            Vec::with_capacity(find_res.unicode.len() / 2);
                         #[allow(clippy::search_is_some)]
-                        let finds_ascii: Vec<String> = find_res
+                        let finds_ascii: FindPatRes<String> = find_res
                             .ascii
                             .iter()
                             .filter(|x| {
@@ -702,7 +725,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
                         let finds_uc_clone = finds_uc.clone();
 
                         finds_ascii_arena.alloc(finds_ascii);
-                        finds_uc_arena.alloc(finds_uc);
+                        finds_uc_arena.alloc(finds_uc.0);
                         find_ascii_res_pos_arena.alloc(find_ascii_res_pos);
                         find_uc_res_pos_arena.alloc(find_uc_res_pos);
 
@@ -1095,7 +1118,7 @@ fn more_pats_run(name: &str) {
                     VecString::vec_string(item, DEFAULT_FORMAT_RULE)
                 );
             } else {
-                let pos_unwrap = pos.unwrap_or_default();
+                let pos_unwrap = pos.iter().flatten().copied().next().unwrap_or_default();
                 let format_rule = |val: &str, index: usize, len: usize| -> String {
                     if val.len() < 64 {
                         if index == 0 {
@@ -1140,7 +1163,7 @@ fn more_pats_run(name: &str) {
                     VecString::vec_string(item, DEFAULT_FORMAT_RULE)
                 );
             } else {
-                let pos_unwrap = pos.unwrap_or_default();
+                let pos_unwrap = pos.iter().flatten().copied().next().unwrap_or_default();
                 let format_rule = |val: &str, index: usize, len: usize| -> String {
                     if val.len() < 64 {
                         if index == 0 {
