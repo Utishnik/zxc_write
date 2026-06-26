@@ -425,7 +425,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
         let ret_raw_ptr = ret.as_mut_ptr();
         let ret_ptr = SendablePtrMut::<ScanStrAllResSendPos<SendableCvoidPtrMut>>(ret_raw_ptr);
 
-        println!("{}", names.vec_string(DEFAULT_FORMAT_RULE));
+        println!("{}", VecString::vec_string(&names, DEFAULT_FORMAT_RULE));
         println!("CNT Pids:  {}", cnt_pids);
         let avb_p = std::thread::available_parallelism().unwrap_or(NonZero::new(8).unwrap());
         let pool = ThreadPool::new(/*cnt_pids*/ avb_p.get());
@@ -501,7 +501,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
                             guard.untrack_info(move || {
                                 format!(
                                     "finds ascii: len: {}",
-                                    clone_finds_ascii.vec_string(DEFAULT_FORMAT_RULE).len(),
+                                    VecString::vec_string(&clone_finds_ascii, DEFAULT_FORMAT_RULE).len(),
                                 )
                             });
 
@@ -509,7 +509,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
                             guard.untrack_info(move || {
                                 format!(
                                     "finds unicode: len: {}",
-                                    clone_finds_uc.vec_string(DEFAULT_FORMAT_RULE).len(),
+                                    VecString::vec_string(&clone_finds_uc, DEFAULT_FORMAT_RULE).len(),
                                 )
                             });
                             /*
@@ -517,14 +517,14 @@ unsafe fn get_childs_dyn_pat_cvoid(
                             guard.untrack_info(move || {
                                 format!(
                                     "Ascii:\t{}",
-                                    clone_finds_ascii.vec_string(DEFAULT_FORMAT_RULE),
+                                    VecString::vec_string(&clone_finds_ascii, DEFAULT_FORMAT_RULE),
                                 )
                             });
                             let clone_finds_uc = finds_uc.clone();
                             guard.untrack_info(move || {
                                 format!(
                                     "Unicode:\t{}",
-                                    clone_finds_uc.vec_string(DEFAULT_FORMAT_RULE),
+                                    VecString::vec_string(&clone_finds_uc, DEFAULT_FORMAT_RULE),
                                 )
                             });
                             */
@@ -549,11 +549,11 @@ unsafe fn get_childs_dyn_pat_cvoid(
                 }
             });
 
-            //println!("Ascii:\t{}", find_res.ascii.vec_string(DEFAULT_FORMAT_RULE));
+            //println!("Ascii:\t{}", VecString::vec_string(&find_res.ascii, DEFAULT_FORMAT_RULE));
             /*
             println!(
                 "Unicode:\t{}",
-                find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
+                VecString::vec_string(&find_res.unicode, DEFAULT_FORMAT_RULE)
             );
             */
             vec_cur += len_job;
@@ -613,7 +613,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
         let ret_raw_ptr = ret.as_mut_ptr();
         let ret_ptr = SendablePtrMut::<ScanStrAllResPosSendArena<SendableCvoidPtrMut>>(ret_raw_ptr);
 
-        println!("{}", names.vec_string(DEFAULT_FORMAT_RULE));
+        println!("{}", VecString::vec_string(&names, DEFAULT_FORMAT_RULE));
         println!("CNT Pids:  {}", cnt_pids);
         let avb_p = std::thread::available_parallelism().unwrap_or(NonZero::new(8).unwrap());
         let pool = ThreadPool::new(/*cnt_pids*/ avb_p.get());
@@ -716,7 +716,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
                                 guard.untrack_info(move || {
                                     format!(
                                         "finds ascii: len: {}",
-                                        clone_finds_ascii.vec_string(DEFAULT_FORMAT_RULE).len(),
+                                        VecString::vec_string(&clone_finds_ascii, DEFAULT_FORMAT_RULE).len(),
                                     )
                                 });
 
@@ -724,7 +724,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
                                 guard.untrack_info(move || {
                                     format!(
                                         "finds unicode: len: {}",
-                                        clone_finds_uc.vec_string(DEFAULT_FORMAT_RULE).len(),
+                                        VecString::vec_string(&clone_finds_uc, DEFAULT_FORMAT_RULE).len(),
                                     )
                                 });
                                 let an_atomic_clone = an_atomic.clone();
@@ -736,14 +736,14 @@ unsafe fn get_childs_dyn_pats_cvoid(
                                 guard.untrack_info(move || {
                                     format!(
                                         "Ascii:\t{}",
-                                        clone_finds_ascii.vec_string(DEFAULT_FORMAT_RULE),
+                                        VecString::vec_string(&clone_finds_ascii, DEFAULT_FORMAT_RULE),
                                     )
                                 });
                                 let clone_finds_uc = finds_uc.clone();
                                 guard.untrack_info(move || {
                                     format!(
                                         "Unicode:\t{}",
-                                        clone_finds_uc.vec_string(DEFAULT_FORMAT_RULE),
+                                        VecString::vec_string(&clone_finds_uc, DEFAULT_FORMAT_RULE),
                                     )
                                 });
                                 */
@@ -770,11 +770,11 @@ unsafe fn get_childs_dyn_pats_cvoid(
                 }
             });
 
-            //println!("Ascii:\t{}", find_res.ascii.vec_string(DEFAULT_FORMAT_RULE));
+            //println!("Ascii:\t{}", VecString::vec_string(&find_res.ascii, DEFAULT_FORMAT_RULE));
             /*
             println!(
                 "Unicode:\t{}",
-                find_res.unicode.vec_string(DEFAULT_FORMAT_RULE)
+                VecString::vec_string(&find_res.unicode, DEFAULT_FORMAT_RULE)
             );
             */
             vec_cur += len_job;
@@ -813,7 +813,7 @@ unsafe fn get_childs_cvoid(
                 format!("name exe {}\tpid: {}", x.1.clone(), x.0)
             })
             .collect::<Vec<String>>();
-        println!("{}", names.vec_string(DEFAULT_FORMAT_RULE));
+        println!("{}", VecString::vec_string(&names, DEFAULT_FORMAT_RULE));
         let cnt_pids = pids_vec.len();
         let pool = ThreadPool::new(cnt_pids);
         let an_atomic = Arc::new(AtomicUsize::new(0));
@@ -849,13 +849,13 @@ unsafe fn get_childs_cvoid(
                     {
                         println!(
                             "Ascii:\t{}\tlen: {}",
-                            find_res.ascii.vec_string(DEFAULT_FORMAT_RULE),
-                            find_res.ascii.vec_string(DEFAULT_FORMAT_RULE).len()
+                            VecString::vec_string(&find_res.ascii, DEFAULT_FORMAT_RULE),
+                            VecString::vec_string(&find_res.ascii, DEFAULT_FORMAT_RULE).len()
                         );
                         println!(
                             "Unicode:\t{}\tlen: {}",
-                            find_res.unicode.vec_string(DEFAULT_FORMAT_RULE),
-                            find_res.unicode.vec_string(DEFAULT_FORMAT_RULE).len(),
+                            VecString::vec_string(&find_res.unicode, DEFAULT_FORMAT_RULE),
+                            VecString::vec_string(&find_res.unicode, DEFAULT_FORMAT_RULE).len(),
                         );
                     }
                     unsafe {
