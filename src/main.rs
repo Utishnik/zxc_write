@@ -2,7 +2,7 @@ use allocative::Allocative;
 use core::ffi::c_void;
 use std::cmp;
 use std::num::NonZero;
-use std::ops::Deref;
+use std::ops::{Deref, DerefMut};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use threadpool::ThreadPool;
@@ -197,53 +197,53 @@ fn find_strings(dwprocessid: u32, log: OptionLog) -> Result<ExtractStrResult, ()
     Ok(strs.unwrap())
 }
 
-fn get_base_addr_assci(find_res: &ExtractStrResult) -> Vec<*const c_void> {
+fn get_base_addr_assci(find_res: &ExtractStrResult) -> AddrResObj {
     find_res
         .ascii
         .iter()
         .map(|x| x.base_addr as *const c_void)
-        .collect::<Vec<_>>()
+        .collect()
 }
 
-fn get_base_addr_unicode(find_res: &ExtractStrResult) -> Vec<*const c_void> {
+fn get_base_addr_unicode(find_res: &ExtractStrResult) -> AddrResObj {
     find_res
         .unicode
         .iter()
         .map(|x| x.base_addr as *const c_void)
-        .collect::<Vec<_>>()
+        .collect()
 }
 
 #[derive(Clone)]
 struct BaseAddrRes {
-    pub assci: Vec<*const c_void>,
-    pub unicode: Vec<*const c_void>,
+    pub assci: AddrResObj,
+    pub unicode: AddrResObj,
 }
 
 impl BaseAddrRes {
     pub fn with_capacity(&mut self, cap_assci: usize, cap_unicode: usize) {
-        self.assci = Vec::with_capacity(cap_assci);
-        self.unicode = Vec::with_capacity(cap_unicode);
+        self.assci = AddrResObj::with_capacity(cap_assci);
+        self.unicode = AddrResObj::with_capacity(cap_unicode);
     }
 }
 
-unsafe fn get_base_addr_assci_send<T>(find_res: &ExtractStrResult) -> Vec<SendablePtr<T>>
+unsafe fn get_base_addr_assci_send<T>(find_res: &ExtractStrResult) -> AddrResSendObj<T>
 //where T: Clone,
 {
     find_res
         .ascii
         .iter()
         .map(|x| SendablePtr(x.base_addr as *const T))
-        .collect::<Vec<_>>()
+        .collect()
 }
 
-unsafe fn get_base_addr_unicode_send<T>(find_res: &ExtractStrResult) -> Vec<SendablePtr<T>>
+unsafe fn get_base_addr_unicode_send<T>(find_res: &ExtractStrResult) -> AddrResSendObj<T>
 //where T: Clone,
 {
     find_res
         .unicode
         .iter()
         .map(|x| SendablePtr(x.base_addr as *const T))
-        .collect::<Vec<_>>()
+        .collect()
 }
 
 unsafe fn get_base_addr_all_send<T>(find_res: &ExtractStrResult) -> BaseAddrResSend<T>
@@ -260,7 +260,7 @@ unsafe fn get_base_addr_all_send<T>(find_res: &ExtractStrResult) -> BaseAddrResS
 unsafe fn get_base_addr_assci_send_pat_filter<T>(
     find_res: &ExtractStrResult,
     pat: impl Fn(&String) -> (bool, usize),
-) -> Vec<(SendablePtr<T>, usize)>
+) -> AddrPosResSendObj<T>
 //where T: Clone,
 {
     /*
@@ -277,13 +277,13 @@ unsafe fn get_base_addr_assci_send_pat_filter<T>(
         .map(|x| (x, pat(&x.str)))
         .filter(|x| x.1.0)
         .map(|x| (SendablePtr(x.0.base_addr as *const T), x.1.1))
-        .collect::<Vec<_>>()
+        .collect()
 }
 
 unsafe fn get_base_addr_unicode_send_pat_filter<T>(
     find_res: &ExtractStrResult,
     pat: impl Fn(&String) -> (bool, usize),
-) -> Vec<(SendablePtr<T>, usize)>
+) -> AddrPosResSendObj<T>
 //where T: Clone,
 {
     /*
@@ -300,7 +300,7 @@ unsafe fn get_base_addr_unicode_send_pat_filter<T>(
         .map(|x| (x, pat(&x.str)))
         .filter(|x| x.1.0)
         .map(|x| (SendablePtr(x.0.base_addr as *const T), x.1.1))
-        .collect::<Vec<_>>()
+        .collect()
 }
 
 unsafe fn get_base_addr_all_send_pat_filter<T>(
@@ -321,29 +321,29 @@ unsafe fn get_base_addr_all_send_pat_filter<T>(
 struct BaseAddrResSendPos<T>
 //where T: Clone,
 {
-    pub assci: Vec<(SendablePtr<T>, usize)>,
-    pub unicode: Vec<(SendablePtr<T>, usize)>,
+    pub assci: AddrPosResSendObj<T>,
+    pub unicode: AddrPosResSendObj<T>,
 }
 
 #[derive(Clone)]
 struct BaseAddrResSend<T>
 //where T: Clone,
 {
-    pub assci: Vec<SendablePtr<T>>,
-    pub unicode: Vec<SendablePtr<T>>,
+    pub assci: AddrResSendObj<T>,
+    pub unicode: AddrResSendObj<T>,
 }
 
 impl<T> BaseAddrResSend<T> {
     pub fn with_capacity(&mut self, cap_assci: usize, cap_unicode: usize) {
-        self.assci = Vec::with_capacity(cap_assci);
-        self.unicode = Vec::with_capacity(cap_unicode);
+        self.assci = AddrResSendObj::with_capacity(cap_assci);
+        self.unicode = AddrResSendObj::with_capacity(cap_unicode);
     }
 }
 
 impl<T> BaseAddrResSendPos<T> {
     pub fn with_capacity(&mut self, cap_assci: usize, cap_unicode: usize) {
-        self.assci = Vec::with_capacity(cap_assci);
-        self.unicode = Vec::with_capacity(cap_unicode);
+        self.assci = AddrPosResSendObj::with_capacity(cap_assci);
+        self.unicode = AddrPosResSendObj::with_capacity(cap_unicode);
     }
 }
 
@@ -358,14 +358,14 @@ fn get_base_addr_all(find_res: &ExtractStrResult) -> BaseAddrRes {
 
 #[derive(Clone)]
 struct ScanStrRes {
-    pub finds_ascii: Vec<String>,
-    pub finds_unicode: Vec<String>,
+    pub finds_ascii: FindPatResObj<String>,
+    pub finds_unicode: FindPatResObj<String>,
 }
 
 impl ScanStrRes {
     fn with_capacity(&mut self, cap_ascii: usize, cap_unicode: usize) {
-        self.finds_ascii = Vec::with_capacity(cap_ascii);
-        self.finds_unicode = Vec::with_capacity(cap_unicode);
+        self.finds_ascii = FindPatResObj::with_capacity(cap_ascii);
+        self.finds_unicode = FindPatResObj::with_capacity(cap_unicode);
     }
 }
 
@@ -541,8 +541,8 @@ unsafe fn get_childs_dyn_pat_cvoid(
                         let inner = ret_ptr.0.add(vec_cur_copy + item.0);
                         (*inner).finds_addr = finds_addr;
                         (*inner).ssr = ScanStrRes {
-                            finds_ascii,
-                            finds_unicode: finds_uc,
+                            finds_ascii: FindPatResObj(finds_ascii),
+                            finds_unicode: FindPatResObj(finds_uc),
                         };
                         //#[cfg(debug_assertions)]
                         // (*inner).finds_addr.assci.iter().for_each(|x|println!("addres ascii: {:p}",x.0));
@@ -575,37 +575,213 @@ unsafe fn get_childs_dyn_pat_cvoid(
     }
 }
 pub struct ScanStrAllResSendArena<T> {
-    pub finds_ascii: Arena<Vec<String>>,
-    pub finds_unicode: Arena<Vec<String>>,
+    pub finds_ascii: FindPatsResArenaObj<String>,
+    pub finds_unicode: FindPatsResArenaObj<String>,
     pub finds_addr: Arena<BaseAddrResSendPos<T>>,
 }
 
 pub struct ScanStrAllResPosSendArena<T> {
-    pub finds_ascii: Arena<Vec<String>>,
-    pub finds_unicode: Arena<Vec<String>>,
+    pub finds_ascii: FindPatsResArenaObj<String>,
+    pub finds_unicode: FindPatsResArenaObj<String>,
     pub finds_addr: Arena<BaseAddrResSend<T>>,
-    pub find_ascii_res_pos_arena: Arena<Vec<Option<usize>>>,
-    pub find_uc_res_pos_arena: Arena<Vec<Option<usize>>>,
+    pub find_ascii_res_pos_arena: Arena<FindPatResObj<PosFindObj>>,
+    pub find_uc_res_pos_arena: Arena<FindPatResObj<PosFindObj>>,
 }
-
-type FindPatRes<T> = Vec<T>;
-type FindPatsResArena<T> = Arena<Vec<T>>;
-type PosFind = Option<usize>;
 
 #[repr(transparent)]
 #[derive(Clone)]
 pub struct FindPatResObj<T>(pub Vec<T>);
 
 #[repr(transparent)]
-pub struct FindPatsResArenaObj<T>(pub Arena<Vec<T>>);
+pub struct FindPatsResArenaObj<T>(pub Arena<FindPatResObj<T>>);
 
 #[repr(transparent)]
+#[derive(Clone, Copy)]
 pub struct PosFindObj(pub Option<usize>);
 
+impl<T> FindPatResObj<T> {
+    pub fn new() -> Self {
+        FindPatResObj(Vec::new())
+    }
+    pub fn with_capacity(cap: usize) -> Self {
+        FindPatResObj(Vec::with_capacity(cap))
+    }
+}
+
+impl<T> Default for FindPatResObj<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> FromIterator<T> for FindPatResObj<T> {
+    fn from_iter<I: IntoIterator<Item = T>>(iter: I) -> Self {
+        FindPatResObj(iter.into_iter().collect())
+    }
+}
+
+impl<T> Deref for FindPatResObj<T> {
+    type Target = Vec<T>;
+    fn deref(&self) -> &Vec<T> {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for FindPatResObj<T> {
+    fn deref_mut(&mut self) -> &mut Vec<T> {
+        &mut self.0
+    }
+}
+
+impl<T> Deref for FindPatsResArenaObj<T> {
+    type Target = Arena<FindPatResObj<T>>;
+    fn deref(&self) -> &Arena<FindPatResObj<T>> {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for FindPatsResArenaObj<T> {
+    fn deref_mut(&mut self) -> &mut Arena<FindPatResObj<T>> {
+        &mut self.0
+    }
+}
+
+impl Deref for PosFindObj {
+    type Target = Option<usize>;
+    fn deref(&self) -> &Option<usize> {
+        &self.0
+    }
+}
+
+impl DerefMut for PosFindObj {
+    fn deref_mut(&mut self) -> &mut Option<usize> {
+        &mut self.0
+    }
+}
 
 impl<T: core::fmt::Display> VecString for FindPatResObj<T> {
     fn vec_string(&self, format_rule: FormatRuleFn) -> String {
         VecString::vec_string(&self.0, format_rule)
+    }
+}
+
+// ── адреса (raw *const c_void) ──
+
+#[repr(transparent)]
+#[derive(Clone)]
+pub struct AddrResObj(pub Vec<*const c_void>);
+
+impl AddrResObj {
+    pub fn new() -> Self {
+        AddrResObj(Vec::new())
+    }
+    pub fn with_capacity(cap: usize) -> Self {
+        AddrResObj(Vec::with_capacity(cap))
+    }
+}
+
+impl Default for AddrResObj {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl FromIterator<*const c_void> for AddrResObj {
+    fn from_iter<I: IntoIterator<Item = *const c_void>>(iter: I) -> Self {
+        AddrResObj(iter.into_iter().collect())
+    }
+}
+
+impl Deref for AddrResObj {
+    type Target = Vec<*const c_void>;
+    fn deref(&self) -> &Vec<*const c_void> {
+        &self.0
+    }
+}
+
+impl DerefMut for AddrResObj {
+    fn deref_mut(&mut self) -> &mut Vec<*const c_void> {
+        &mut self.0
+    }
+}
+
+// ── адреса (send SendablePtr<T>) ──
+
+#[repr(transparent)]
+#[derive(Clone)]
+pub struct AddrResSendObj<T>(pub Vec<SendablePtr<T>>);
+
+impl<T> AddrResSendObj<T> {
+    pub fn new() -> Self {
+        AddrResSendObj(Vec::new())
+    }
+    pub fn with_capacity(cap: usize) -> Self {
+        AddrResSendObj(Vec::with_capacity(cap))
+    }
+}
+
+impl<T> Default for AddrResSendObj<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> FromIterator<SendablePtr<T>> for AddrResSendObj<T> {
+    fn from_iter<I: IntoIterator<Item = SendablePtr<T>>>(iter: I) -> Self {
+        AddrResSendObj(iter.into_iter().collect())
+    }
+}
+
+impl<T> Deref for AddrResSendObj<T> {
+    type Target = Vec<SendablePtr<T>>;
+    fn deref(&self) -> &Vec<SendablePtr<T>> {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for AddrResSendObj<T> {
+    fn deref_mut(&mut self) -> &mut Vec<SendablePtr<T>> {
+        &mut self.0
+    }
+}
+
+// ── адреса + позиция (send SendablePtr<T> + usize) ──
+
+#[repr(transparent)]
+#[derive(Clone)]
+pub struct AddrPosResSendObj<T>(pub Vec<(SendablePtr<T>, usize)>);
+
+impl<T> AddrPosResSendObj<T> {
+    pub fn new() -> Self {
+        AddrPosResSendObj(Vec::new())
+    }
+    pub fn with_capacity(cap: usize) -> Self {
+        AddrPosResSendObj(Vec::with_capacity(cap))
+    }
+}
+
+impl<T> Default for AddrPosResSendObj<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl<T> FromIterator<(SendablePtr<T>, usize)> for AddrPosResSendObj<T> {
+    fn from_iter<I: IntoIterator<Item = (SendablePtr<T>, usize)>>(iter: I) -> Self {
+        AddrPosResSendObj(iter.into_iter().collect())
+    }
+}
+
+impl<T> Deref for AddrPosResSendObj<T> {
+    type Target = Vec<(SendablePtr<T>, usize)>;
+    fn deref(&self) -> &Vec<(SendablePtr<T>, usize)> {
+        &self.0
+    }
+}
+
+impl<T> DerefMut for AddrPosResSendObj<T> {
+    fn deref_mut(&mut self) -> &mut Vec<(SendablePtr<T>, usize)> {
+        &mut self.0
     }
 }
 
@@ -677,8 +853,10 @@ unsafe fn get_childs_dyn_pats_cvoid(
                     }
                     let find_res = find_res.unwrap();
 
-                    let finds_uc_arena: FindPatsResArena<String> = Arena::new();
-                    let finds_ascii_arena: FindPatsResArena<String> = Arena::new();
+                    let finds_uc_arena: FindPatsResArenaObj<String> =
+                        FindPatsResArenaObj(Arena::new());
+                    let finds_ascii_arena: FindPatsResArenaObj<String> =
+                        FindPatsResArenaObj(Arena::new());
                     let finds_addr_arena = Arena::new();
                     let find_ascii_res_pos_arena = Arena::new();
                     let find_uc_res_pos_arena = Arena::new();
@@ -686,35 +864,38 @@ unsafe fn get_childs_dyn_pats_cvoid(
                     //от memchr конечно профита нет но пофиг
                     #[allow(clippy::search_is_some)]
                     for item in pat_clone.iter() {
-                        let mut find_uc_res_pos: FindPatRes<PosFind> =
-                            Vec::with_capacity(find_res.unicode.len() / 2);
-                        let finds_uc: FindPatResObj<String> = FindPatResObj(find_res
-                            .unicode
-                            .iter()
-                            .filter(|x| {
-                                let find = memchr::memmem::find(x.str.as_bytes(), item.as_bytes());
-                                if let Some(x) = find {
-                                    find_uc_res_pos.push(Some(x));
-                                    return true;
-                                }
-                                find_uc_res_pos.push(None);
-                                false
-                            })
-                            .map(|x| x.str.clone())
-                            .collect());
-                        let mut find_ascii_res_pos: FindPatRes<PosFind> =
-                            Vec::with_capacity(find_res.unicode.len() / 2);
+                        let mut find_uc_res_pos: FindPatResObj<PosFindObj> =
+                            FindPatResObj::with_capacity(find_res.unicode.len() / 2);
+                        let finds_uc: FindPatResObj<String> = FindPatResObj(
+                            find_res
+                                .unicode
+                                .iter()
+                                .filter(|x| {
+                                    let find =
+                                        memchr::memmem::find(x.str.as_bytes(), item.as_bytes());
+                                    if let Some(x) = find {
+                                        find_uc_res_pos.push(PosFindObj(Some(x)));
+                                        return true;
+                                    }
+                                    find_uc_res_pos.push(PosFindObj(None));
+                                    false
+                                })
+                                .map(|x| x.str.clone())
+                                .collect(),
+                        );
+                        let mut find_ascii_res_pos: FindPatResObj<PosFindObj> =
+                            FindPatResObj::with_capacity(find_res.unicode.len() / 2);
                         #[allow(clippy::search_is_some)]
-                        let finds_ascii: FindPatRes<String> = find_res
+                        let finds_ascii: FindPatResObj<String> = find_res
                             .ascii
                             .iter()
                             .filter(|x| {
                                 let find = memchr::memmem::find(x.str.as_bytes(), item.as_bytes());
                                 if let Some(x) = find {
-                                    find_ascii_res_pos.push(Some(x));
+                                    find_ascii_res_pos.push(PosFindObj(Some(x)));
                                     return true;
                                 }
-                                find_ascii_res_pos.push(None);
+                                find_ascii_res_pos.push(PosFindObj(None));
                                 false
                             })
                             .map(|x| x.str.clone())
@@ -725,7 +906,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
                         let finds_uc_clone = finds_uc.clone();
 
                         finds_ascii_arena.alloc(finds_ascii);
-                        finds_uc_arena.alloc(finds_uc.0);
+                        finds_uc_arena.alloc(finds_uc);
                         find_ascii_res_pos_arena.alloc(find_ascii_res_pos);
                         find_uc_res_pos_arena.alloc(find_uc_res_pos);
 
@@ -940,12 +1121,12 @@ fn shutdown_logger(log: Arc<Option<Mutex<Logger>>>) -> Result<(), ()> {
 }
 
 pub struct MorePatsExtractRes {
-    pub extract_assci_str: Vec<Vec<Vec<String>>>,
-    pub extract_unicode_str: Vec<Vec<Vec<String>>>,
-    pub extract_addr_only_ascii: Vec<Vec<SendablePtr<SendableCvoidPtrMut>>>,
-    pub extract_addr_only_unicode: Vec<Vec<SendablePtr<SendableCvoidPtrMut>>>,
-    pub extract_find_pos_ascii: Vec<Vec<Vec<Option<usize>>>>,
-    pub extract_find_pos_unicode: Vec<Vec<Vec<Option<usize>>>>,
+    pub extract_assci_str: Vec<Vec<FindPatResObj<String>>>,
+    pub extract_unicode_str: Vec<Vec<FindPatResObj<String>>>,
+    pub extract_addr_only_ascii: Vec<AddrResSendObj<SendableCvoidPtrMut>>,
+    pub extract_addr_only_unicode: Vec<AddrResSendObj<SendableCvoidPtrMut>>,
+    pub extract_find_pos_ascii: Vec<Vec<FindPatResObj<PosFindObj>>>,
+    pub extract_find_pos_unicode: Vec<Vec<FindPatResObj<PosFindObj>>>,
 }
 
 pub struct MorePatsExtractResPos {
@@ -1118,7 +1299,7 @@ fn more_pats_run(name: &str) {
                     VecString::vec_string(item, DEFAULT_FORMAT_RULE)
                 );
             } else {
-                let pos_unwrap = pos.iter().flatten().copied().next().unwrap_or_default();
+                let pos_unwrap = pos.iter().find_map(|p| p.0).unwrap_or_default();
                 let format_rule = |val: &str, index: usize, len: usize| -> String {
                     if val.len() < 64 {
                         if index == 0 {
@@ -1163,7 +1344,7 @@ fn more_pats_run(name: &str) {
                     VecString::vec_string(item, DEFAULT_FORMAT_RULE)
                 );
             } else {
-                let pos_unwrap = pos.iter().flatten().copied().next().unwrap_or_default();
+                let pos_unwrap = pos.iter().find_map(|p| p.0).unwrap_or_default();
                 let format_rule = |val: &str, index: usize, len: usize| -> String {
                     if val.len() < 64 {
                         if index == 0 {
