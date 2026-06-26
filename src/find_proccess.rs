@@ -163,7 +163,7 @@ fn test_get_all_processes_detailed() {
     if let Err(e) = f {
         println!("{:?}", e);
     } else if let Ok(ok) = f {
-        let fmt = VecString::vec_string(&ok, DEFAULT_FORMAT_RULE) ;
+        let fmt = VecString::vec_string(&ok, DEFAULT_FORMAT_RULE);
         println!("{}", fmt);
     }
 }

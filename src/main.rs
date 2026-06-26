@@ -501,7 +501,8 @@ unsafe fn get_childs_dyn_pat_cvoid(
                             guard.untrack_info(move || {
                                 format!(
                                     "finds ascii: len: {}",
-                                    VecString::vec_string(&clone_finds_ascii, DEFAULT_FORMAT_RULE).len(),
+                                    VecString::vec_string(&clone_finds_ascii, DEFAULT_FORMAT_RULE)
+                                        .len(),
                                 )
                             });
 
@@ -509,7 +510,8 @@ unsafe fn get_childs_dyn_pat_cvoid(
                             guard.untrack_info(move || {
                                 format!(
                                     "finds unicode: len: {}",
-                                    VecString::vec_string(&clone_finds_uc, DEFAULT_FORMAT_RULE).len(),
+                                    VecString::vec_string(&clone_finds_uc, DEFAULT_FORMAT_RULE)
+                                        .len(),
                                 )
                             });
                             /*
@@ -582,8 +584,8 @@ pub struct ScanStrAllResPosSendArena<T> {
     pub finds_ascii: Arena<Vec<String>>,
     pub finds_unicode: Arena<Vec<String>>,
     pub finds_addr: Arena<BaseAddrResSend<T>>,
-    pub find_ascii_res_pos_arena: Arena<Option<usize>>,
-    pub find_uc_res_pos_arena: Arena<Option<usize>>,
+    pub find_ascii_res_pos_arena: Arena<Vec<Option<usize>>>,
+    pub find_uc_res_pos_arena: Arena<Vec<Option<usize>>>,
 }
 
 #[hotpath::measure]
@@ -663,21 +665,22 @@ unsafe fn get_childs_dyn_pats_cvoid(
                     //от memchr конечно профита нет но пофиг
                     #[allow(clippy::search_is_some)]
                     for item in pat_clone.iter() {
-                        let mut find_uc_res_pos: Option<usize> = None;
+                        let mut find_uc_res_pos: Vec<Option<usize>> = Vec::new();
                         let finds_uc: Vec<String> = find_res
                             .unicode
                             .iter()
                             .filter(|x| {
                                 let find = memchr::memmem::find(x.str.as_bytes(), item.as_bytes());
                                 if let Some(x) = find {
-                                    find_uc_res_pos = Some(x);
+                                    find_uc_res_pos.push(Some(x));
                                     return true;
                                 }
+                                find_uc_res_pos.push(None);
                                 false
                             })
                             .map(|x| x.str.clone())
                             .collect();
-                        let mut find_ascii_res_pos: Option<usize> = None;
+                        let mut find_ascii_res_pos: Vec<Option<usize>> = Vec::new();
                         #[allow(clippy::search_is_some)]
                         let finds_ascii: Vec<String> = find_res
                             .ascii
@@ -685,9 +688,10 @@ unsafe fn get_childs_dyn_pats_cvoid(
                             .filter(|x| {
                                 let find = memchr::memmem::find(x.str.as_bytes(), item.as_bytes());
                                 if let Some(x) = find {
-                                    find_ascii_res_pos = Some(x);
+                                    find_ascii_res_pos.push(Some(x));
                                     return true;
                                 }
+                                find_ascii_res_pos.push(None);
                                 false
                             })
                             .map(|x| x.str.clone())
@@ -716,7 +720,11 @@ unsafe fn get_childs_dyn_pats_cvoid(
                                 guard.untrack_info(move || {
                                     format!(
                                         "finds ascii: len: {}",
-                                        VecString::vec_string(&clone_finds_ascii, DEFAULT_FORMAT_RULE).len(),
+                                        VecString::vec_string(
+                                            &clone_finds_ascii,
+                                            DEFAULT_FORMAT_RULE
+                                        )
+                                        .len(),
                                     )
                                 });
 
@@ -724,7 +732,8 @@ unsafe fn get_childs_dyn_pats_cvoid(
                                 guard.untrack_info(move || {
                                     format!(
                                         "finds unicode: len: {}",
-                                        VecString::vec_string(&clone_finds_uc, DEFAULT_FORMAT_RULE).len(),
+                                        VecString::vec_string(&clone_finds_uc, DEFAULT_FORMAT_RULE)
+                                            .len(),
                                     )
                                 });
                                 let an_atomic_clone = an_atomic.clone();
@@ -912,8 +921,8 @@ pub struct MorePatsExtractRes {
     pub extract_unicode_str: Vec<Vec<Vec<String>>>,
     pub extract_addr_only_ascii: Vec<Vec<SendablePtr<SendableCvoidPtrMut>>>,
     pub extract_addr_only_unicode: Vec<Vec<SendablePtr<SendableCvoidPtrMut>>>,
-    pub extract_find_pos_ascii: Vec<Vec<Option<usize>>>,
-    pub extract_find_pos_unicode: Vec<Vec<Option<usize>>>,
+    pub extract_find_pos_ascii: Vec<Vec<Vec<Option<usize>>>>,
+    pub extract_find_pos_unicode: Vec<Vec<Vec<Option<usize>>>>,
 }
 
 pub struct MorePatsExtractResPos {
@@ -1062,17 +1071,14 @@ fn more_pats_run(name: &str) {
             .collect();
         let extract_ascii_pos_iter = res.extract_find_pos_ascii.iter();
         let extract_unicode_pos_iter = res.extract_find_pos_unicode.iter();
-        let str_assci_addr = VecString::vec_string(&fmt_assci_addr
-            .iter()
-            .flatten()
-            .collect::<Vec<_>>()
-            ,DEFAULT_FORMAT_RULE);
-        let str_unicode_addr = VecString::vec_string(&fmt_unicode_addr
-            .iter()
-            .flatten()
-            .collect::<Vec<_>>(),
-            DEFAULT_FORMAT_RULE
-            );
+        let str_assci_addr = VecString::vec_string(
+            &fmt_assci_addr.iter().flatten().collect::<Vec<_>>(),
+            DEFAULT_FORMAT_RULE,
+        );
+        let str_unicode_addr = VecString::vec_string(
+            &fmt_unicode_addr.iter().flatten().collect::<Vec<_>>(),
+            DEFAULT_FORMAT_RULE,
+        );
         println!("ASSCI ADDR:  {}", str_assci_addr);
         println!("UNICODE ADDR:  {}", str_unicode_addr);
         println!("\n\nstrs: ");
@@ -1084,21 +1090,30 @@ fn more_pats_run(name: &str) {
             .zip(extract_ascii_pos_iter.flatten())
         {
             if item.len() < 64 {
-                println!("ascii: {}",VecString::vec_string(item, DEFAULT_FORMAT_RULE)
-);
+                println!(
+                    "ascii: {}",
+                    VecString::vec_string(item, DEFAULT_FORMAT_RULE)
+                );
             } else {
                 let pos_unwrap = pos.unwrap_or_default();
                 let format_rule = |val: &str, index: usize, len: usize| -> String {
-                    if index == 0 {
-                        if val.len() < 64 {
+                    if val.len() < 64 {
+                        if index == 0 {
                             format!("[{}", val)
+                        } else if index != len - 1 {
+                            format!(", {}", val)
                         } else {
-                            format!("[{}", val.get(pos_unwrap..=63).unwrap_or_default())
+                            format!(", {}]", val)
                         }
-                    } else if index != len - 1 {
-                        format!(", {}", val)
                     } else {
-                        format!(", {}]", val)
+                        let val = format!("[{}", val.get(pos_unwrap..=63).unwrap_or_default());
+                        if index == 0 {
+                            format!("[{}", val)
+                        } else if index != len - 1 {
+                            format!(", {}", val)
+                        } else {
+                            format!(", {}]", val)
+                        }
                     }
                 };
                 println!(
@@ -1127,16 +1142,23 @@ fn more_pats_run(name: &str) {
             } else {
                 let pos_unwrap = pos.unwrap_or_default();
                 let format_rule = |val: &str, index: usize, len: usize| -> String {
-                    if index == 0 {
-                        if val.len() < 64 {
+                    if val.len() < 64 {
+                        if index == 0 {
                             format!("[{}", val)
+                        } else if index != len - 1 {
+                            format!(", {}", val)
                         } else {
-                            format!("[{}", val.get(pos_unwrap..=63).unwrap_or_default())
+                            format!(", {}]", val)
                         }
-                    } else if index != len - 1 {
-                        format!(", {}", val)
                     } else {
-                        format!(", {}]", val)
+                        let val = format!("[{}", val.get(pos_unwrap..=63).unwrap_or_default());
+                        if index == 0 {
+                            format!("[{}", val)
+                        } else if index != len - 1 {
+                            format!(", {}", val)
+                        } else {
+                            format!(", {}]", val)
+                        }
                     }
                 };
 
