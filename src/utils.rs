@@ -45,21 +45,18 @@ pub fn vec_flat2_borrow<T>(vec2: &Vec<Vec<T>>) -> Vec<T>
 where
     T: Clone,
 {
-    vec2.iter().flat_map(|x| x).map(|x| x.clone()).collect()
+    vec2.iter().flatten().cloned().collect()
 }
 
 pub fn vec_flat2_owned<T>(vec2: Vec<Vec<T>>) -> Vec<T> {
-    vec2.into_iter().flat_map(|x| x).collect()
+    vec2.into_iter().flatten().collect()
 }
 
 pub fn vec_flat2_owned_xz<T>(vec2: Vec<&Vec<T>>) -> Vec<T>
 where
     T: Clone,
 {
-    vec2.into_iter()
-        .flat_map(|x| x)
-        .map(|x| x.clone())
-        .collect()
+    vec2.into_iter().flatten().cloned().collect()
 }
 
 #[must_use]

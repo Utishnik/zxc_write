@@ -162,9 +162,9 @@ pub mod aes128 {
         cipher.decrypt(nonce, data)
     }
 
-    pub fn more_encrypt<'data>(
+    pub fn more_encrypt(
         key: &[u8; 16],
-        data: &'data [&[u8]],
+        data: &[&[u8]],
         nonce_get: &[u8; 12],
     ) -> Result<Vec<Result<Vec<u8>>>> {
         let key = Key::<Aes128Gcm>::from_slice(key);

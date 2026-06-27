@@ -1,10 +1,7 @@
 use crate::log::*;
 use crate::utils::OptionLog;
-use allocative::{Allocative, FlameGraphBuilder, size_of_unique_allocated_data};
-use memchr::memchr;
-use std::cmp::max;
 use std::ops::Deref;
-use std::sync::{Arc, LazyLock, Mutex};
+use std::sync::Arc;
 use std::{ffi::c_void, ptr};
 use typed_arena::Arena;
 
@@ -810,7 +807,7 @@ pub fn scan_dynamic_mem(
 
             if let Some(x) = log_deref {
                 let guard = x.lock();
-                if let Ok(ok_guard) = guard
+                if let Ok(_ok_guard) = guard
                     && let trace_size = all_trace_bytes.load(Ordering::Relaxed)
                     && trace_size > 100_000_000
                 {

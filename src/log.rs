@@ -286,10 +286,7 @@ impl Logger {
             match handle.join() {
                 Ok(()) => {}
                 Err(_) => {
-                    return Err(std::io::Error::new(
-                        std::io::ErrorKind::Other,
-                        "Logger writer thread panicked",
-                    ));
+                    return Err(std::io::Error::other("Logger writer thread panicked"));
                 }
             }
         }
