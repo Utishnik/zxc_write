@@ -1289,7 +1289,12 @@ fn more_pats_run(name: &str) {
             .zip(extract_ascii_pos_iter.flatten())
         {
             println!("\n\tPos len: {}\n", pos.len());
-            if item.len() < 64 {
+            if item.len() < 16
+                && item
+                    .iter()
+                    .fold(usize::MAX, |cur_max, x| (x.len()).max(cur_max))
+                    < 16
+            {
                 println!(
                     "ascii: {}",
                     VecString::vec_string(item, DEFAULT_FORMAT_RULE)
@@ -1324,24 +1329,20 @@ fn more_pats_run(name: &str) {
                     }
                 };
 
-                println!(
-                    "ascii: {} ...",
-                    VecStringFn::vec_string(
-                        &item
+                let fmt_res = IteratorStringFnMut::iter_string(
+                    item.iter().map(|x| {
+                        let old_pos = pos_unwrap;
+                        pos_unwrap = pos
                             .iter()
-                            .map(|x| {
-                                let old_pos = pos_unwrap;
-                                pos_unwrap = pos
-                                    .iter()
-                                    .next()
-                                    .map(|x| x.0.unwrap_or_default())
-                                    .unwrap_or_default();
-                                x.get((old_pos)..(old_pos + 63)).unwrap_or_default()
-                            })
-                            .collect::<Vec<_>>(),
-                        format_rule
-                    )
+                            .next()
+                            .map(|x| x.0.unwrap_or_default())
+                            .unwrap_or_default();
+                        x.get((old_pos)..(old_pos + 63)).unwrap_or_default()
+                    }),
+                    format_rule,
                 );
+
+                println!("ascii: {} ...", fmt_res);
             }
         }
         for (item, pos) in res
@@ -1350,7 +1351,12 @@ fn more_pats_run(name: &str) {
             .flatten()
             .zip(extract_unicode_pos_iter.flatten())
         {
-            if item.len() < 64 {
+            if item.len() < 16
+                && item
+                    .iter()
+                    .fold(usize::MAX, |cur_max, x| (x.len()).max(cur_max))
+                    < 16
+            {
                 println!(
                     "unicode: {}",
                     VecString::vec_string(item, DEFAULT_FORMAT_RULE)
@@ -1369,33 +1375,29 @@ fn more_pats_run(name: &str) {
                     } else {
                         let val = format!("[{}", val.get(pos_unwrap..=63).unwrap_or_default());
                         if index == 0 {
-                            format!("[{}", val)
+                            format!("[{}...", val)
                         } else if index != len - 1 {
-                            format!(", {}", val)
+                            format!(", {}...", val)
                         } else {
-                            format!(", {}]", val)
+                            format!(", {}...]", val)
                         }
                     }
                 };
 
-                println!(
-                    "unicode: {} ...",
-                    VecStringFn::vec_string(
-                        &item
+                let fmt_res = IteratorStringFnMut::iter_string(
+                    item.iter().map(|x| {
+                        let old_pos = pos_unwrap;
+                        pos_unwrap = pos
                             .iter()
-                            .map(|x| {
-                                let old_pos = pos_unwrap;
-                                pos_unwrap = pos
-                                    .iter()
-                                    .next()
-                                    .map(|x| x.0.unwrap_or_default())
-                                    .unwrap_or_default();
-                                x.get((old_pos)..(old_pos + 63)).unwrap_or_default()
-                            })
-                            .collect::<Vec<_>>(),
-                        format_rule
-                    )
+                            .next()
+                            .map(|x| x.0.unwrap_or_default())
+                            .unwrap_or_default();
+                        x.get((old_pos)..(old_pos + 63)).unwrap_or_default()
+                    }),
+                    format_rule,
                 );
+
+                println!("unicode: {} ...", fmt_res);
             }
         }
     }
