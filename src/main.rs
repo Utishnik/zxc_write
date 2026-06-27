@@ -1320,11 +1320,11 @@ fn more_pats_run(name: &str) {
                             val.get(pos_unwrap..=(pos_unwrap + 63)).unwrap_or_default()
                         );
                         if index == 0 {
-                            format!("[{}", val)
+                            format!("[{}...", val)
                         } else if index != len - 1 {
-                            format!(", {}", val)
+                            format!(", {}...", val)
                         } else {
-                            format!(", {}]", val)
+                            format!(", {}...]", val)
                         }
                     }
                 };

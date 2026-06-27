@@ -1010,7 +1010,7 @@ dependencies = [
 [[package]]
 name = "vec-string"
 version = "0.2.1"
-source = "git+https://github.com/Utishnik/vec-string#a25605c13a020ba705d69b243fa26f19f7fdd08a"
+source = "git+https://github.com/Utishnik/vec-string#a84dd61338aa371d8e8f6ea4c8c5dd3320989615"
 
 [[package]]
 name = "version_check"
