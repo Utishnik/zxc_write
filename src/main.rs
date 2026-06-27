@@ -1288,14 +1288,19 @@ fn more_pats_run(name: &str) {
             .flatten()
             .zip(extract_ascii_pos_iter.flatten())
         {
+            println!("\n\tPos len: {}\n", pos.len());
             if item.len() < 64 {
                 println!(
                     "ascii: {}",
                     VecString::vec_string(item, DEFAULT_FORMAT_RULE)
                 );
             } else {
-                let pos_unwrap = pos.iter().find_map(|p| p.0).unwrap_or_default();
-                let format_rule = |val: &str, index: usize, len: usize| -> String {
+                let mut pos_unwrap = pos
+                    .iter()
+                    .next()
+                    .map(|x| x.0.unwrap_or_default())
+                    .unwrap_or_default();
+                let format_rule = move |val: &str, index: usize, len: usize| -> String {
                     if val.len() < 64 {
                         if index == 0 {
                             format!("[{}", val)
@@ -1305,7 +1310,10 @@ fn more_pats_run(name: &str) {
                             format!(", {}]", val)
                         }
                     } else {
-                        let val = format!("[{}", val.get(pos_unwrap..=63).unwrap_or_default());
+                        let val = format!(
+                            "[{}",
+                            val.get(pos_unwrap..=(pos_unwrap + 63)).unwrap_or_default()
+                        );
                         if index == 0 {
                             format!("[{}", val)
                         } else if index != len - 1 {
@@ -1315,12 +1323,21 @@ fn more_pats_run(name: &str) {
                         }
                     }
                 };
+
                 println!(
                     "ascii: {} ...",
                     VecStringFn::vec_string(
                         &item
                             .iter()
-                            .map(|x| x.get((pos_unwrap)..63).unwrap_or_default())
+                            .map(|x| {
+                                let old_pos = pos_unwrap;
+                                pos_unwrap = pos
+                                    .iter()
+                                    .next()
+                                    .map(|x| x.0.unwrap_or_default())
+                                    .unwrap_or_default();
+                                x.get((old_pos)..(old_pos + 63)).unwrap_or_default()
+                            })
                             .collect::<Vec<_>>(),
                         format_rule
                     )
@@ -1339,8 +1356,8 @@ fn more_pats_run(name: &str) {
                     VecString::vec_string(item, DEFAULT_FORMAT_RULE)
                 );
             } else {
-                let pos_unwrap = pos.iter().find_map(|p| p.0).unwrap_or_default();
-                let format_rule = |val: &str, index: usize, len: usize| -> String {
+                let mut pos_unwrap = pos.iter().find_map(|p| p.0).unwrap_or_default();
+                let format_rule = move |val: &str, index: usize, len: usize| -> String {
                     if val.len() < 64 {
                         if index == 0 {
                             format!("[{}", val)
@@ -1366,7 +1383,15 @@ fn more_pats_run(name: &str) {
                     VecStringFn::vec_string(
                         &item
                             .iter()
-                            .map(|x| x.get((pos_unwrap)..63).unwrap_or_default())
+                            .map(|x| {
+                                let old_pos = pos_unwrap;
+                                pos_unwrap = pos
+                                    .iter()
+                                    .next()
+                                    .map(|x| x.0.unwrap_or_default())
+                                    .unwrap_or_default();
+                                x.get((old_pos)..(old_pos + 63)).unwrap_or_default()
+                            })
                             .collect::<Vec<_>>(),
                         format_rule
                     )
