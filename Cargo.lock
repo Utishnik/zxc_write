@@ -93,9 +93,9 @@ dependencies = [
 
 [[package]]
 name = "arc-swap"
-version = "1.9.1"
+version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a3a1fd6f75306b68087b831f025c712524bcb19aad54e557b1129cfa0a2b207"
+checksum = "c049c0be4daef0b145cb3555416b3b8ef5b7888a38aea1a3a155801fe7b0810b"
 dependencies = [
  "rustversion",
 ]
@@ -1010,7 +1010,7 @@ dependencies = [
 [[package]]
 name = "vec-string"
 version = "0.2.1"
-source = "git+https://github.com/Utishnik/vec-string#a84dd61338aa371d8e8f6ea4c8c5dd3320989615"
+source = "git+https://github.com/Utishnik/vec-string#9ba71371187f503b0898b2c753de330b59649805"
 
 [[package]]
 name = "version_check"

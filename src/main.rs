@@ -1300,12 +1300,19 @@ fn more_pats_run(name: &str) {
                     VecString::vec_string(item, DEFAULT_FORMAT_RULE)
                 );
             } else {
-                let mut pos_unwrap = pos
-                    .iter()
-                    .next()
-                    .map(|x| x.0.unwrap_or_default())
-                    .unwrap_or_default();
-                let format_rule = move |val: &str, index: usize, len: usize| -> String {
+                let cur_pos_idx = 0;
+                let pos_clone = pos.clone();
+                fn pos_transform(pos: &FindPatResObj<PosFindObj>) -> Vec<Option<usize>> {
+                    pos.iter().map(|x| x.0).collect()
+                }
+                let pos_transform = pos_transform(&pos_clone);
+                let state = (pos_transform, cur_pos_idx);
+                let format_rule = |state: &mut (Vec<Option<usize>>, usize),
+                                   val: &str,
+                                   index: usize,
+                                   len: usize|
+                 -> String {
+                    let (vec_pos, idx) = state;
                     if val.len() < 64 {
                         if index == 0 {
                             format!("[{}", val)
@@ -1315,30 +1322,40 @@ fn more_pats_run(name: &str) {
                             format!(", {}]", val)
                         }
                     } else {
-                        let val = format!(
-                            "[{}",
-                            val.get(pos_unwrap..=(pos_unwrap + 63)).unwrap_or_default()
-                        );
-                        if index == 0 {
-                            format!("[{}...", val)
-                        } else if index != len - 1 {
-                            format!(", {}...", val)
+                        let get_pos = vec_pos.get(*idx);
+                        *idx += 1;
+                        if let Some(pos_unwrap) = get_pos
+                            && pos_unwrap.as_ref().is_some()
+                        {
+                            let pos_unwrap = pos_unwrap.as_ref().unwrap();
+
+                            let val = format!(
+                                "[{}",
+                                val.get(*pos_unwrap..=(*pos_unwrap + 63))
+                                    .unwrap_or_default()
+                            );
+                            if index == 0 {
+                                format!("[{}...", val)
+                            } else if index != len - 1 {
+                                format!(", {}...", val)
+                            } else {
+                                format!(", {}...]", val)
+                            }
                         } else {
-                            format!(", {}...]", val)
+                            if index == 0 {
+                                "[NONE...".to_string()
+                            } else if index != len - 1 {
+                                ", NONE...".to_string()
+                            } else {
+                                ", NONE...]".to_string()
+                            }
                         }
                     }
                 };
 
-                let fmt_res = IteratorStringFnMut::iter_string(
-                    item.iter().map(|x| {
-                        let old_pos = pos_unwrap;
-                        pos_unwrap = pos
-                            .iter()
-                            .next()
-                            .map(|x| x.0.unwrap_or_default())
-                            .unwrap_or_default();
-                        x.get((old_pos)..(old_pos + 63)).unwrap_or_default()
-                    }),
+                let fmt_res = IteratorStringWithState::iter_string_with_state(
+                    item.iter(),
+                    state,
                     format_rule,
                 );
 
@@ -1362,8 +1379,19 @@ fn more_pats_run(name: &str) {
                     VecString::vec_string(item, DEFAULT_FORMAT_RULE)
                 );
             } else {
-                let mut pos_unwrap = pos.iter().find_map(|p| p.0).unwrap_or_default();
-                let format_rule = move |val: &str, index: usize, len: usize| -> String {
+                let cur_pos_idx = 0;
+                let pos_clone = pos.clone();
+                fn pos_transform(pos: &FindPatResObj<PosFindObj>) -> Vec<Option<usize>> {
+                    pos.iter().map(|x| x.0).collect()
+                }
+                let pos_transform = pos_transform(&pos_clone);
+                let state = (pos_transform, cur_pos_idx);
+                let format_rule = |state: &mut (Vec<Option<usize>>, usize),
+                                   val: &str,
+                                   index: usize,
+                                   len: usize|
+                 -> String {
+                    let (vec_pos, idx) = state;
                     if val.len() < 64 {
                         if index == 0 {
                             format!("[{}", val)
@@ -1373,27 +1401,40 @@ fn more_pats_run(name: &str) {
                             format!(", {}]", val)
                         }
                     } else {
-                        let val = format!("[{}", val.get(pos_unwrap..=63).unwrap_or_default());
-                        if index == 0 {
-                            format!("[{}...", val)
-                        } else if index != len - 1 {
-                            format!(", {}...", val)
+                        let get_pos = vec_pos.get(*idx);
+                        *idx += 1;
+                        if let Some(pos_unwrap) = get_pos
+                            && pos_unwrap.as_ref().is_some()
+                        {
+                            let pos_unwrap = pos_unwrap.as_ref().unwrap();
+
+                            let val = format!(
+                                "[{}",
+                                val.get(*pos_unwrap..=(*pos_unwrap + 63))
+                                    .unwrap_or_default()
+                            );
+                            if index == 0 {
+                                format!("[{}...", val)
+                            } else if index != len - 1 {
+                                format!(", {}...", val)
+                            } else {
+                                format!(", {}...]", val)
+                            }
                         } else {
-                            format!(", {}...]", val)
+                            if index == 0 {
+                                "[NONE...".to_string()
+                            } else if index != len - 1 {
+                                ", NONE...".to_string()
+                            } else {
+                                ", NONE...]".to_string()
+                            }
                         }
                     }
                 };
 
-                let fmt_res = IteratorStringFnMut::iter_string(
-                    item.iter().map(|x| {
-                        let old_pos = pos_unwrap;
-                        pos_unwrap = pos
-                            .iter()
-                            .next()
-                            .map(|x| x.0.unwrap_or_default())
-                            .unwrap_or_default();
-                        x.get((old_pos)..(old_pos + 63)).unwrap_or_default()
-                    }),
+                let fmt_res = IteratorStringWithState::iter_string_with_state(
+                    item.iter(),
+                    state,
                     format_rule,
                 );
 
