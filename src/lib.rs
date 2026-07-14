@@ -45,10 +45,12 @@
 //alloc
 #[cfg(not(feature = "hotpath-alloc"))]
 #[cfg(not(miri))]
+//use rimalloc::Rimalloc;
 use mimalloc::MiMalloc;
 #[cfg(not(feature = "hotpath-alloc"))]
 #[cfg(not(miri))]
 #[global_allocator]
+//static GLOBAL: Rimalloc = Rimalloc;
 static GLOBAL: MiMalloc = MiMalloc;
 
 pub mod crypt;

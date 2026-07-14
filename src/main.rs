@@ -1280,14 +1280,20 @@ fn more_pats_run(name: &str) {
         );
         println!("ASSCI ADDR:  {}", str_assci_addr);
         println!("UNICODE ADDR:  {}", str_unicode_addr);
+        println!("\n\n");
+        println!(
+            "extract_ascii_pos_iter len: {}",
+            extract_ascii_pos_iter.len()
+        );
+        println!(
+            "extract_unicode_pos_iter len: {}",
+            extract_unicode_pos_iter.len()
+        );
+        println!("extract_assci_str len: {}", res.extract_assci_str.len());
+        println!("extract_unicode_str len: {}", res.extract_unicode_str.len());
         println!("\n\nstrs: ");
 
-        for (item, pos) in res
-            .extract_assci_str
-            .iter()
-            .flatten()
-            .zip(extract_ascii_pos_iter.flatten())
-        {
+        for (item, pos) in res.extract_assci_str.iter().zip(extract_ascii_pos_iter) {
             println!("\n\tPos len: {}\n", pos.len());
             if item.len() < 16
                 && item
@@ -1359,15 +1365,12 @@ fn more_pats_run(name: &str) {
                     format_rule,
                 );
 
+                println!("extract_assci_str len: {}", res.extract_assci_str.len());
+
                 println!("ascii: {} ...", fmt_res);
             }
         }
-        for (item, pos) in res
-            .extract_assci_str
-            .iter()
-            .flatten()
-            .zip(extract_unicode_pos_iter.flatten())
-        {
+        for (item, pos) in res.extract_unicode_str.iter().zip(extract_unicode_pos_iter) {
             if item.len() < 16
                 && item
                     .iter()
