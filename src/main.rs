@@ -14,6 +14,7 @@ use zxc_write::mem::*;
 use zxc_write::privilege::enable_privilege_one;
 use zxc_write::utils::SendablePtr;
 use zxc_write::utils::*;
+use ambassador::*;
 
 fn wait_close() {
     println!("CLOSE...");
@@ -583,6 +584,8 @@ pub struct ScanStrAllResPosSendArena<T> {
 
 #[repr(transparent)]
 #[derive(Clone)]
+#[derive(Delegate)]
+#[delegate(vec_string::VecStringRuleRef<'a,X>,generics = "'a",generics = "X",where = "X: vec_string::FormatRuleNoState")]
 pub struct FindPatResObj<T>(pub Vec<T>);
 
 #[repr(transparent)]
@@ -1303,7 +1306,7 @@ fn more_pats_run(name: &str) {
             {
                 println!(
                     "ascii: {}",
-                    VecString::vec_string(item, DEFAULT_FORMAT_RULE)
+                    VecStringNested::vec_string_nested(item, DEFAULT_FORMAT_RULE,DEFAULT_FORMAT_RULE)
                 );
             } else {
                 let cur_pos_idx = 0;
@@ -1359,10 +1362,12 @@ fn more_pats_run(name: &str) {
                     }
                 };
 
-                let fmt_res = IteratorStringWithState::iter_string_with_state(
+                //IteratorStringWithState
+                let fmt_res = vec_string::IteratorStringWithStateFnNested::iter_string_with_state_fn_nested (
                     item.iter(),
-                    state,
-                    format_rule,
+                    DEFAULT_FORMAT_RULE,
+                    &state,
+                    format_rule,         
                 );
 
                 println!("extract_assci_str len: {}", res.extract_assci_str.len());

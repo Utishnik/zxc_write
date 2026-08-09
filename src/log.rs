@@ -18,7 +18,7 @@ static ERR_MSG: LazyLock<String> = LazyLock::new(|| write_red("[ERROR]"));
 static DBG_MSG: LazyLock<String> = LazyLock::new(|| write_cyan("[DEBUG]"));
 static WARN_MSG: LazyLock<String> = LazyLock::new(|| write_yellow("[WARN]"));
 
-#[derive(Clone)]
+#[derive(Clone,Debug)]
 pub enum LogTo {
     Ephemeral,
     File,
