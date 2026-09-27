@@ -1314,7 +1314,7 @@ fn more_pats_run(name: &str) {
                 fn pos_transform(pos: &FindPatResObj<PosFindObj>) -> Vec<Option<usize>> {
                     pos.iter().map(|x| x.0).collect()
                 }
-                let pos_transform = pos_transform(&pos_clone);
+                let pos_transform = pos_clone.iter().map(|x| pos_transform(x));
                 let state = (pos_transform, cur_pos_idx);
                 let format_rule = |state: &mut (Vec<Option<usize>>, usize),
                                    val: &str,
@@ -1364,7 +1364,7 @@ fn more_pats_run(name: &str) {
 
                 //IteratorStringWithState
                 let fmt_res = vec_string::IteratorStringWithStateFnNested::iter_string_with_state_fn_nested (
-                    item.iter(),
+                    item.into_iter(),
                     DEFAULT_FORMAT_RULE,
                     &state,
                     format_rule,         
