@@ -1,3 +1,4 @@
+use ambassador::Delegate;
 use core::ffi::c_void;
 use std::cmp;
 use std::num::NonZero;
@@ -582,7 +583,8 @@ pub struct ScanStrAllResPosSendArena<T> {
 }
 
 #[repr(transparent)]
-#[derive(Clone)]
+#[derive(Clone, Delegate)]
+#[delegate(vec_string::VecString)]
 pub struct FindPatResObj<T>(pub Vec<T>);
 
 #[repr(transparent)]
@@ -649,12 +651,6 @@ impl Deref for PosFindObj {
 impl DerefMut for PosFindObj {
     fn deref_mut(&mut self) -> &mut Option<usize> {
         &mut self.0
-    }
-}
-
-impl<T: core::fmt::Display> VecString for FindPatResObj<T> {
-    fn vec_string(&self, format_rule: FormatRuleFn) -> String {
-        VecString::vec_string(&self.0, format_rule)
     }
 }
 
@@ -1293,6 +1289,13 @@ fn more_pats_run(name: &str) {
         println!("extract_unicode_str len: {}", res.extract_unicode_str.len());
         println!("\n\nstrs: ");
 
+        fn pos_transform(pos: &FindPatResObj<PosFindObj>) -> Vec<Option<usize>> {
+            pos.iter().map(|x| x.0).collect()
+        }
+        fn flat_pos(pos: Vec<FindPatResObj<PosFindObj>>) -> FindPatResObj<PosFindObj> {
+            pos.into_iter().flat_map(|x| x.0).collect()
+        }
+
         for (item, pos) in res.extract_assci_str.iter().zip(extract_ascii_pos_iter) {
             println!("\n\tPos len: {}\n", pos.len());
             if item.len() < 16
@@ -1303,16 +1306,18 @@ fn more_pats_run(name: &str) {
             {
                 println!(
                     "ascii: {}",
-                    VecString::vec_string(item, DEFAULT_FORMAT_RULE)
+                    VecStringNested::vec_string_nested(
+                        item,
+                        DEFAULT_FORMAT_RULE,
+                        DEFAULT_FORMAT_RULE
+                    )
                 );
             } else {
                 let cur_pos_idx = 0;
                 let pos_clone = pos.clone();
-                fn pos_transform(pos: &FindPatResObj<PosFindObj>) -> Vec<Option<usize>> {
-                    pos.iter().map(|x| x.0).collect()
-                }
-                let pos_transform = pos_transform(&pos_clone);
-                let state = (pos_transform, cur_pos_idx);
+
+                let pos_transform = pos_transform(&flat_pos(pos_clone));
+                let mut state = (pos_transform, cur_pos_idx);
                 let format_rule = |state: &mut (Vec<Option<usize>>, usize),
                                    val: &str,
                                    index: usize,
@@ -1359,15 +1364,27 @@ fn more_pats_run(name: &str) {
                     }
                 };
 
-                let fmt_res = IteratorStringWithState::iter_string_with_state(
+                /*
+                let fmt_res = IteratorStringWithStateNested::iter_string_with_state_nested(
                     item.iter(),
                     state,
                     format_rule,
+                    format_rule,
                 );
+                *///TODO
 
                 println!("extract_assci_str len: {}", res.extract_assci_str.len());
+                let fmt_res = item
+                    .into_iter()
+                    .enumerate()
+                    .map(|(idx, x)| (idx, x, VecString::vec_string(&x.0, DEFAULT_FORMAT_RULE)))
+                    .map(|(idx, x, v)| format_rule(&mut state, v.as_str(), idx, v.len()))
+                    .collect::<Vec<_>>();
 
-                println!("ascii: {} ...", fmt_res);
+                println!(
+                    "ascii: {} ...",
+                    VecString::vec_string(&fmt_res, DEFAULT_FORMAT_RULE)
+                );
             }
         }
         for (item, pos) in res.extract_unicode_str.iter().zip(extract_unicode_pos_iter) {
@@ -1379,16 +1396,18 @@ fn more_pats_run(name: &str) {
             {
                 println!(
                     "unicode: {}",
-                    VecString::vec_string(item, DEFAULT_FORMAT_RULE)
+                    VecStringNested::vec_string_nested(
+                        item,
+                        DEFAULT_FORMAT_RULE,
+                        DEFAULT_FORMAT_RULE
+                    )
                 );
             } else {
                 let cur_pos_idx = 0;
                 let pos_clone = pos.clone();
-                fn pos_transform(pos: &FindPatResObj<PosFindObj>) -> Vec<Option<usize>> {
-                    pos.iter().map(|x| x.0).collect()
-                }
-                let pos_transform = pos_transform(&pos_clone);
-                let state = (pos_transform, cur_pos_idx);
+
+                let pos_transform = pos_transform(&flat_pos(pos_clone));
+                let mut state = (pos_transform, cur_pos_idx);
                 let format_rule = |state: &mut (Vec<Option<usize>>, usize),
                                    val: &str,
                                    index: usize,
@@ -1435,13 +1454,24 @@ fn more_pats_run(name: &str) {
                     }
                 };
 
+                /*
                 let fmt_res = IteratorStringWithState::iter_string_with_state(
                     item.iter(),
                     state,
                     format_rule,
                 );
+                *///TODO
+                let fmt_res = item
+                    .into_iter()
+                    .enumerate()
+                    .map(|(idx, x)| (idx, x, VecString::vec_string(&x.0, DEFAULT_FORMAT_RULE)))
+                    .map(|(idx, x, v)| format_rule(&mut state, v.as_str(), idx, v.len()))
+                    .collect::<Vec<_>>();
 
-                println!("unicode: {} ...", fmt_res);
+                println!(
+                    "unicode: {} ...",
+                    VecString::vec_string(&fmt_res, DEFAULT_FORMAT_RULE)
+                );
             }
         }
     }
