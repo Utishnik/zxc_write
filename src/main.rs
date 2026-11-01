@@ -165,18 +165,15 @@ fn extract_str_dyn_mem_lossy(
             .map(|x| x as &Vec<ExtractStr>)
             .collect();
         let log_deref = log.deref();
-        if let Some(x) = log_deref {
-            let guard = x.lock();
-            if let Ok(ok_guard) = guard {
-                let len_unicode = arena_unicode_borrow.len();
-                let len_ascii = arena_ascii_borrow.len();
-                ok_guard.untrack_info(move || {
-                    format!(
-                        "arena unicode len: {} , arena_ascii: {}",
-                        len_unicode, len_ascii
-                    )
-                });
-            }
+        if let Some(log) = log_deref {
+            let len_unicode = arena_unicode_borrow.len();
+            let len_ascii = arena_ascii_borrow.len();
+            log.untrack_info(move || {
+                format!(
+                    "arena unicode len: {} , arena_ascii: {}",
+                    len_unicode, len_ascii
+                )
+            });
         }
         let res = ExtractStrResult {
             ascii: vec_flat2_owned_xz(arena_ascii_borrow),
@@ -400,7 +397,7 @@ impl<T> ScanStrAllResSendPos<T> {
 unsafe fn get_childs_dyn_pat_cvoid(
     pid: u32,
     pat: String,
-    log: Arc<Option<Mutex<Logger>>>,
+    log: Arc<Option<Logger>>,
     min_len: usize,
     max_len: Option<usize>,
 ) -> Result<Vec<ScanStrAllResSendPos<SendableCvoidPtrMut>>, win_core::Error> {
@@ -488,11 +485,9 @@ unsafe fn get_childs_dyn_pat_cvoid(
                     //#[cfg(debug_assertions)]
                     {
                         let deref_log = pool_log_clone.deref().as_ref();
-                        if let Some(x) = deref_log
-                            && let Ok(guard) = x.lock()
-                        {
+                        if let Some(log) = deref_log {
                             let clone_finds_ascii = finds_ascii.clone();
-                            guard.untrack_info(move || {
+                            log.untrack_info(move || {
                                 format!(
                                     "finds ascii: len: {}",
                                     VecString::vec_string(&clone_finds_ascii, DEFAULT_FORMAT_RULE)
@@ -501,7 +496,7 @@ unsafe fn get_childs_dyn_pat_cvoid(
                             });
 
                             let clone_finds_uc = finds_uc.clone();
-                            guard.untrack_info(move || {
+                            log.untrack_info(move || {
                                 format!(
                                     "finds unicode: len: {}",
                                     VecString::vec_string(&clone_finds_uc, DEFAULT_FORMAT_RULE)
@@ -778,7 +773,7 @@ impl<T> DerefMut for AddrPosResSendObj<T> {
 unsafe fn get_childs_dyn_pats_cvoid(
     pid: u32,
     pats: Box<[String]>,
-    log: Arc<Option<Mutex<Logger>>>,
+    log: Arc<Option<Logger>>,
     min_len: usize,
     max_len: Option<usize>,
 ) -> Result<Vec<ScanStrAllResPosSendArena<SendableCvoidPtrMut>>, win_core::Error> {
@@ -833,10 +828,8 @@ unsafe fn get_childs_dyn_pats_cvoid(
                     );
                     if find_res.is_err() {
                         let deref_log = pool_log_clone.deref().as_ref();
-                        if let Some(x) = deref_log
-                            && let Ok(guard) = x.lock()
-                        {
-                            guard.untrack_error(|| "find strings failed: None");
+                        if let Some(log) = deref_log {
+                            log.untrack_error(|| "find strings failed: None");
                         }
                         return;
                     }
@@ -906,11 +899,9 @@ unsafe fn get_childs_dyn_pats_cvoid(
                         //#[cfg(debug_assertions)]
                         {
                             let deref_log = pool_log_clone.deref().as_ref();
-                            if let Some(x) = deref_log
-                                && let Ok(guard) = x.lock()
-                            {
+                            if let Some(log) = deref_log {
                                 let clone_finds_ascii = finds_ascii_clone.clone();
-                                guard.untrack_info(move || {
+                                log.untrack_info(move || {
                                     format!(
                                         "finds ascii: len: {}",
                                         VecString::vec_string(
@@ -922,7 +913,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
                                 });
 
                                 let clone_finds_uc = finds_uc_clone.clone();
-                                guard.untrack_info(move || {
+                                log.untrack_info(move || {
                                     format!(
                                         "finds unicode: len: {}",
                                         VecString::vec_string(&clone_finds_uc, DEFAULT_FORMAT_RULE)
@@ -930,7 +921,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
                                     )
                                 });
                                 let an_atomic_clone = an_atomic.clone();
-                                guard.untrack_info(move || {
+                                log.untrack_info(move || {
                                     format!("number: {}", an_atomic_clone.load(Ordering::Relaxed))
                                 });
                                 /*
@@ -999,7 +990,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
 #[hotpath::measure]
 unsafe fn get_childs_cvoid(
     pid: u32,
-    log: Arc<Option<Mutex<Logger>>>,
+    log: Arc<Option<Logger>>,
 ) -> Result<Vec<ScanStrAllResSend<SendableCvoidPtrMut>>, win_core::Error> {
     let childs = get_child_processes(pid);
     if let Err(e) = childs {
@@ -1090,21 +1081,26 @@ unsafe fn get_childs_cvoid(
     }
 }
 
-fn shutdown_logger(log: Arc<Option<Mutex<Logger>>>) -> Result<(), ()> {
-    if let Some(x) = log.deref() {
-        let guard = x.lock();
-        match guard {
-            Ok(mut ok_guard) => {
-                if ok_guard.shutdown().is_err() {
-                    #[cfg(debug_assertions)]
-                    println!("ошибка закрытия логгера");
-                    return Err(());
-                }
+fn shutdown_logger(mut log: Arc<Option<Logger>>) -> Result<(), ()> {
+    let mut r = Arc::get_mut(&mut log);
+    loop {
+        match r {
+            None => {
+                r = Arc::get_mut(&mut log);
+                std::thread::yield_now();
             }
-            Err(ref e) => {
-                #[cfg(debug_assertions)]
-                println!("Logger отравлен: {:?}", e);
-                return Err(());
+            Some(ref mut opt_log) => {
+                if let Some(log) = opt_log {
+                    if let Err(err) = log.shutdown() {
+                        println!("ошибка заыкрытия логера: {}", err);
+                        return Err(());
+                    } else {
+                        break;
+                    }
+                } else {
+                    println!("логера нет");
+                    break;
+                }
             }
         }
     }
@@ -1130,15 +1126,12 @@ pub struct MorePatsExtractResPos {
 //надо сделать еще одну версию которая не будет смешивать
 //<Vec<(SendablePtr<SendableCvoidPtrMut>, usize)> usize а usize как отдельная арена
 #[hotpath::measure]
-fn more_pats(
-    log: Arc<Option<Mutex<Logger>>>,
-    pid: u32,
-) -> windows::core::Result<MorePatsExtractRes> {
+fn more_pats(log: Arc<Option<Logger>>, pid: u32) -> windows::core::Result<MorePatsExtractRes> {
     let res_dyn_pats;
     unsafe {
         res_dyn_pats = get_childs_dyn_pats_cvoid(
             pid,
-            Box::new(["russh".to_string(), "hotpath".to_string()]),
+            Box::new(["rust".to_string(), "hotpath".to_string()]),
             log,
             1,
             Some(14000),
@@ -1203,7 +1196,7 @@ fn more_pats_run(name: &str) {
             None
         }
     };
-    let log = unwrap.map_or_else(|| Arc::new(None), |x| Arc::new(Some(Mutex::new(x))));
+    let log = unwrap.map_or_else(|| Arc::new(None), |x| Arc::new(Some(x)));
     let privilege_res = enable_privilege_one("SeDebugPrivilege");
     if let Err(e) = privilege_res {
         println!("Error: {:?}", e);

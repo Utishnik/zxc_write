@@ -32,7 +32,7 @@ struct LogEntry {
 
 pub struct Logger {
     /// `Option` чтобы `shutdown()` мог закрыть канал, дропнув MTx.
-    sx: Cell<Option<crossfire::MTx<mpsc::Array<LogEntry>>>>,
+    sx: Option<crossfire::MTx<mpsc::Array<LogEntry>>>,
     file: Option<File>,
     log_to: LogTo,
     with_time: bool,
@@ -191,7 +191,7 @@ impl Logger {
         };
         let mem_ptr = buf_ram;
         Ok(Self {
-            sx: Cell::new(Some(sx)),
+            sx: Some(sx),
             file,
             log_to: log_op.map_or(LogTo::Ephemeral, |_| LogTo::File),
             with_time: false,
@@ -214,17 +214,15 @@ impl Logger {
     /// успешного `send` — writer-поток сам уменьшит его после обработки.
     #[track_caller]
     fn send_entry(&self, entry: LogEntry) {
-        unsafe {
-            let sx_opt = cell_borrow(&self.sx);
-            match sx_opt.as_ref() {
-                Some(sx) => match sx.send(entry) {
-                    Ok(_) => {
-                        self.sender_cnt.fetch_add(1, Ordering::Relaxed);
-                    }
-                    Err(_) => panic!("Logger thread died :("),
-                },
-                None => panic!("Logger already shut down"),
-            }
+        let sx_opt = &self.sx;
+        match sx_opt.as_ref() {
+            Some(sx) => match sx.send(entry) {
+                Ok(_) => {
+                    self.sender_cnt.fetch_add(1, Ordering::Relaxed);
+                }
+                Err(_) => panic!("Logger thread died :("),
+            },
+            None => panic!("Logger already shut down"),
         }
     }
 
@@ -279,7 +277,7 @@ impl Logger {
 
         // Закрываем канал: take() заменяет содержимое Cell на None,
         // оригинальный MTx дропается → writer.recv() вернёт Err и break.
-        let _ = self.sx.get_mut().take();
+        let _ = self.sx.take();
 
         // Дожидаемся реального завершения writer-потока.
         if let Some(handle) = self.thread_handle.take() {

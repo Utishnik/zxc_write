@@ -616,11 +616,8 @@ pub fn scan_process_processors_mbi<T>(
 ) -> Result<ExtractResultArena<T>, ScanProcessStringsError> {
     //PROCESS_QUERY_INFORMATION
     let log_deref = log.deref();
-    if let Some(x) = log_deref {
-        let guard = x.lock();
-        if let Ok(ok_guard) = guard {
-            ok_guard.untrack_info(move || format!("PID SCAN:\t{dwprocessid}"));
-        }
+    if let Some(guard) = log_deref {
+        guard.untrack_info(move || format!("PID SCAN:\t{dwprocessid}"));
     }
     let h_process = open_read_process(dwprocessid);
     match h_process {
@@ -628,12 +625,9 @@ pub fn scan_process_processors_mbi<T>(
             let _guard = HandleGuard(h_process);
             //let mut accumulator: ExtractResult<T> = Vec::with_capacity(start_cap);
 
-            if let Some(x) = log_deref {
-                let guard = x.lock();
-                if let Ok(ok_guard) = guard {
-                    let len = start_cap + rpmr.len() * processors.len();
-                    ok_guard.untrack_warning(move || format!("alloc bytes: {}", len));
-                }
+            if let Some(log) = log_deref {
+                let len = start_cap + rpmr.len() * processors.len();
+                log.untrack_warning(move || format!("alloc bytes: {}", len));
             }
             let arena_accumulator = Arena::with_capacity(start_cap + rpmr.len() * processors.len());
             for item in rpmr.into_iter() {
@@ -794,24 +788,19 @@ pub fn scan_dynamic_mem(
             mbi.State == MEM_COMMIT && mbi.Type == MEM_PRIVATE && is_readwrite(mbi.Protect);
         if is_dynamic {
             let size = mbi.RegionSize.min(max_cap).max(1);
-            if let Some(x) = log_deref {
-                let guard = x.lock();
-                if let Ok(ok_guard) = guard
-                    && size > 10_000_000
-                {
-                    ok_guard.untrack_warning(move || format!("size: {size}"));
+            if let Some(log) = log_deref {
+                if size > 10_000_000 {
+                    log.untrack_warning(move || format!("size: {size}"));
                 }
             }
             trace_size += size;
             all_trace_bytes.fetch_add(size, Ordering::Relaxed);
 
-            if let Some(x) = log_deref {
-                let guard = x.lock();
-                if let Ok(_ok_guard) = guard
-                    && let trace_size = all_trace_bytes.load(Ordering::Relaxed)
+            if let Some(log) = log_deref {
+                if let trace_size = all_trace_bytes.load(Ordering::Relaxed)
                     && trace_size > 100_000_000
                 {
-                    //ok_guard.untrack_warning(move || format!("all trace bytes size: {trace_size}"));
+                    //log.untrack_warning(move || format!("all trace bytes size: {trace_size}"));
                 }
             }
 
@@ -835,12 +824,9 @@ pub fn scan_dynamic_mem(
 
         addr = next as *const _;
     }
-    if let Some(x) = log_deref {
-        let guard = x.lock();
-        if let Ok(ok_guard) = guard
-            && trace_size > 100_000_000
-        {
-            ok_guard.untrack_warning(move || format!("acc size: {trace_size}"));
+    if let Some(log) = log_deref {
+        if trace_size > 100_000_000 {
+            log.untrack_warning(move || format!("acc size: {trace_size}"));
         }
     }
 
@@ -873,11 +859,8 @@ where
 {
     //println!("[DEBUG] PID SCAN:\t{dwprocessid}"); TODO LOG
     let deref_log = log.deref();
-    if let Some(x) = deref_log {
-        let guard = x.lock();
-        if let Ok(ok_guard) = guard {
-            ok_guard.untrack_info(move || format!("PID SCAN:\t{dwprocessid}"));
-        }
+    if let Some(log) = deref_log {
+        log.untrack_info(move || format!("PID SCAN:\t{dwprocessid}"));
     }
     drop(log);
 

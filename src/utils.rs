@@ -116,7 +116,7 @@ pub struct SyncLogger(pub Logger);
 
 unsafe impl Sync for SyncLogger {}
 
-pub type OptionLog = Arc<Option<Mutex<Logger>>>;
+pub type OptionLog = Arc<Option<Logger>>;
 
 pub fn make_vec_to_borrow_arena<T: Clone>(arena: &mut Arena<T>) -> Vec<T> {
     arena.iter_mut().map(|x| x.clone()).collect()
