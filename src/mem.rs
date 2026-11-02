@@ -73,7 +73,7 @@ pub struct ExtractStr {
 
 impl std::fmt::Display for ExtractStr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Str: {}", self.str)
+        writeln!(f, "Str: {}\tPtr: {:p}", self.str,self.base_addr)
     }
 }
 
@@ -645,7 +645,6 @@ pub fn scan_process_processors_mbi<T>(
                 });
                 arena_accumulator.alloc(Some(ret_arena)); //всегда some так как scan_dynamic_mem фильтрует
                 //accumulator.push(Some(ret)); //всегда some так как scan_dynamic_mem фильтрует
-                drop(item); //дроп тут важен чтоб не было потребелние памяти равно 2*(память процесса + оверхед)
             }
             Ok(arena_accumulator)
         }

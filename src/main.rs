@@ -181,7 +181,7 @@ fn extract_str_dyn_mem_lossy(
         };
         Ok(res)
     })
-}
+} 
 
 fn find_strings(dwprocessid: u32, log: OptionLog) -> Result<ExtractStrResult, ()> {
     let strs = extract_str(dwprocessid, log);
@@ -827,7 +827,8 @@ unsafe fn get_childs_dyn_pats_cvoid(
                         all_trace.clone(),
                     );
                     if find_res.is_err() {
-                        let deref_log = pool_log_clone.deref().as_ref();
+                        let log = pool_log_clone.clone();
+                        let deref_log = log.deref().as_ref();
                         if let Some(log) = deref_log {
                             log.untrack_error(|| "find strings failed: None");
                         }
@@ -847,7 +848,8 @@ unsafe fn get_childs_dyn_pats_cvoid(
                     #[allow(clippy::search_is_some)]
                     for item in pat_clone.iter() {
                         let mut find_uc_res_pos: FindPatResObj<PosFindObj> =
-                            FindPatResObj::with_capacity(find_res.unicode.len() / 2);
+                            FindPatResObj::with_capacity(find_res.unicode.len() / 256);
+
                         let finds_uc: FindPatResObj<String> = FindPatResObj(
                             find_res
                                 .unicode
@@ -865,8 +867,13 @@ unsafe fn get_childs_dyn_pats_cvoid(
                                 .map(|x| x.str.clone())
                                 .collect(),
                         );
+                        if let Some(ref log) = *pool_log_clone.clone(){
+                            let len = finds_uc.0.clone().len();
+                            log.untrack_debug(move || format!("cnt finds_uc: {}",len));
+                        }
+                        
                         let mut find_ascii_res_pos: FindPatResObj<PosFindObj> =
-                            FindPatResObj::with_capacity(find_res.unicode.len() / 2);
+                            FindPatResObj::with_capacity(find_res.unicode.len() / 256);
                         #[allow(clippy::search_is_some)]
                         let finds_ascii: FindPatResObj<String> = find_res
                             .ascii
@@ -882,6 +889,11 @@ unsafe fn get_childs_dyn_pats_cvoid(
                             })
                             .map(|x| x.str.clone())
                             .collect();
+
+                        if let Some(ref log) = *pool_log_clone.clone(){
+                            let len = finds_ascii.0.clone().len();
+                            log.untrack_debug(move || format!("cnt finds_ascii: {}",len));
+                        }
 
                         //#[cfg(debug_assertions)]
                         let finds_ascii_clone = finds_ascii.clone();
@@ -903,7 +915,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
                                 let clone_finds_ascii = finds_ascii_clone.clone();
                                 log.untrack_info(move || {
                                     format!(
-                                        "finds ascii: len: {}",
+                                        "_finds ascii: len: {}",
                                         VecString::vec_string(
                                             &clone_finds_ascii,
                                             DEFAULT_FORMAT_RULE
@@ -915,7 +927,7 @@ unsafe fn get_childs_dyn_pats_cvoid(
                                 let clone_finds_uc = finds_uc_clone.clone();
                                 log.untrack_info(move || {
                                     format!(
-                                        "finds unicode: len: {}",
+                                        "_finds unicode: len: {}",
                                         VecString::vec_string(&clone_finds_uc, DEFAULT_FORMAT_RULE)
                                             .len(),
                                     )
@@ -979,8 +991,13 @@ unsafe fn get_childs_dyn_pats_cvoid(
         unsafe {
             ret.set_len(ret_len);
         }
-        println!("log");
-        let _ = shutdown_logger(log);
+        match log.deref(){
+            Some(some_log) => {
+                some_log.untrack_debug(|| "Закрываю логер");
+                let _ = shutdown_logger(log);
+            }
+            None => {},
+        }
         Ok(ret)
     } else {
         unreachable!();
@@ -1224,51 +1241,54 @@ fn more_pats_run(name: &str) {
         res.extract_addr_only_unicode.len()
     );
 
-    // #[cfg(debug_assertions)]
     {
-        println!("address print:");
-        let fmt_assci_addr: Vec<_> = res
-            .extract_addr_only_ascii
-            .iter()
-            .map(|x| {
-                x.iter()
-                    .map(|y| {
-                        if y.0.is_null() {
-                            "".to_string()
-                        } else {
-                            format!("{:p}", y.0)
-                        }
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect();
-        let fmt_unicode_addr: Vec<_> = res
-            .extract_addr_only_unicode
-            .iter()
-            .map(|x| {
-                x.iter()
-                    .map(|y| {
-                        if y.0.is_null() {
-                            "".to_string()
-                        } else {
-                            format!("{:p}", y.0)
-                        }
-                    })
-                    .collect::<Vec<_>>()
-            })
-            .collect();
+        #[cfg(debug_assertions)]
+        {
+            println!("address print:");
+            let fmt_assci_addr: Vec<_> = res
+                .extract_addr_only_ascii
+                .iter()
+                .map(|x| {
+                    x.iter()
+                        .map(|y| {
+                            if y.0.is_null() {
+                                "".to_string()
+                            } else {
+                                format!("{:p}", y.0)
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+            let fmt_unicode_addr: Vec<_> = res
+                .extract_addr_only_unicode
+                .iter()
+                .map(|x| {
+                    x.iter()
+                        .map(|y| {
+                            if y.0.is_null() {
+                                "".to_string()
+                            } else {
+                                format!("{:p}", y.0)
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                })
+                .collect();
+
+            let str_assci_addr = VecString::vec_string(
+                &fmt_assci_addr.iter().flatten().collect::<Vec<_>>(),
+                DEFAULT_FORMAT_RULE,
+            );
+            let str_unicode_addr = VecString::vec_string(
+                &fmt_unicode_addr.iter().flatten().collect::<Vec<_>>(),
+                DEFAULT_FORMAT_RULE,
+            );
+            println!("ASSCI ADDR:  {}", str_assci_addr);
+            println!("UNICODE ADDR:  {}", str_unicode_addr);
+        }
         let extract_ascii_pos_iter = res.extract_find_pos_ascii.iter();
         let extract_unicode_pos_iter = res.extract_find_pos_unicode.iter();
-        let str_assci_addr = VecString::vec_string(
-            &fmt_assci_addr.iter().flatten().collect::<Vec<_>>(),
-            DEFAULT_FORMAT_RULE,
-        );
-        let str_unicode_addr = VecString::vec_string(
-            &fmt_unicode_addr.iter().flatten().collect::<Vec<_>>(),
-            DEFAULT_FORMAT_RULE,
-        );
-        println!("ASSCI ADDR:  {}", str_assci_addr);
-        println!("UNICODE ADDR:  {}", str_unicode_addr);
         println!("\n\n");
         println!(
             "extract_ascii_pos_iter len: {}",
@@ -1294,7 +1314,7 @@ fn more_pats_run(name: &str) {
             if item.len() < 16
                 && item
                     .iter()
-                    .fold(usize::MAX, |cur_max, x| (x.len()).max(cur_max))
+                    .fold(usize::MIN, |cur_max, x| (x.len()).max(cur_max))
                     < 16
             {
                 println!(
@@ -1370,8 +1390,8 @@ fn more_pats_run(name: &str) {
                 let fmt_res = item
                     .into_iter()
                     .enumerate()
-                    .map(|(idx, x)| (idx, x, VecString::vec_string(&x.0, DEFAULT_FORMAT_RULE)))
-                    .map(|(idx, x, v)| format_rule(&mut state, v.as_str(), idx, v.len()))
+                    .map(|(idx, x)| (idx, VecString::vec_string(&x.0, DEFAULT_FORMAT_RULE)))
+                    .map(|(idx, v)| format_rule(&mut state, v.as_str(), idx, v.len()))
                     .collect::<Vec<_>>();
 
                 println!(
@@ -1384,7 +1404,7 @@ fn more_pats_run(name: &str) {
             if item.len() < 16
                 && item
                     .iter()
-                    .fold(usize::MAX, |cur_max, x| (x.len()).max(cur_max))
+                    .fold(usize::MIN, |cur_max, x| (x.len()).max(cur_max))
                     < 16
             {
                 println!(
@@ -1457,8 +1477,8 @@ fn more_pats_run(name: &str) {
                 let fmt_res = item
                     .into_iter()
                     .enumerate()
-                    .map(|(idx, x)| (idx, x, VecString::vec_string(&x.0, DEFAULT_FORMAT_RULE)))
-                    .map(|(idx, x, v)| format_rule(&mut state, v.as_str(), idx, v.len()))
+                    .map(|(idx, x)| (idx, VecString::vec_string(&x.0, DEFAULT_FORMAT_RULE)))
+                    .map(|(idx, v)| format_rule(&mut state, v.as_str(), idx, v.len()))
                     .collect::<Vec<_>>();
 
                 println!(
