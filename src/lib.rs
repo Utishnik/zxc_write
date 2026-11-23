@@ -56,6 +56,7 @@ static GLOBAL: MiMalloc = MiMalloc;
 pub mod crypt;
 pub mod enum_modules;
 pub mod error_hand;
+pub mod file_work;
 pub mod find_proccess;
 pub mod level_integrity_control;
 pub mod log;

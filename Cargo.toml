@@ -15,14 +15,16 @@ windows = {version = "0.62.2", features  = [
         "Win32_System_LibraryLoader",
         "Win32_Security_Authorization",
         "Win32_System_ProcessStatus",
-    ]
+    ]}
 
-}
 vec-string = {git = "https://github.com/Utishnik/vec-string", features = ["ambassador_delegatable"]}
+compio_flexible_dispatch = {git = "https://github.com/Utishnik/compio_flexible_dispatch.git"}
+affinitypool = {git = "https://github.com/Utishnik/affinitypool.git"}
 threadpool = "1.8.1"
 aes-gcm = "0.10.3"
 getrandom = "0.3"
 crossfire = "3.1.7"
+kanal = {git = "https://github.com/Utishnik/kanal.git"}
 chrono = "0.4.44"
 ansi_term = "0.12.1"
 mimalloc = {version = "0.1.50", features = ["secure"] }
@@ -32,6 +34,10 @@ typed-arena = "2.0.2"
 allocative = "0.3.6"
 memchr = "2.8.1"
 ambassador = "0.5.1"
+compio = "0.19.2"
+compio-driver = "0.12.5"
+compio-runtime = "0.12.6"
+windows-sys = "0.61.2"
 
 [features]
 hotpath = ["hotpath/hotpath"]

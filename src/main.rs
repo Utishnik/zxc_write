@@ -181,7 +181,7 @@ fn extract_str_dyn_mem_lossy(
         };
         Ok(res)
     })
-} 
+}
 
 fn find_strings(dwprocessid: u32, log: OptionLog) -> Result<ExtractStrResult, ()> {
     let strs = extract_str(dwprocessid, log);
@@ -861,17 +861,16 @@ unsafe fn get_childs_dyn_pats_cvoid(
                                         find_uc_res_pos.push(PosFindObj(Some(x)));
                                         return true;
                                     }
-                                    find_uc_res_pos.push(PosFindObj(None));
                                     false
                                 })
                                 .map(|x| x.str.clone())
                                 .collect(),
                         );
-                        if let Some(ref log) = *pool_log_clone.clone(){
+                        if let Some(ref log) = *pool_log_clone.clone() {
                             let len = finds_uc.0.clone().len();
-                            log.untrack_debug(move || format!("cnt finds_uc: {}",len));
+                            log.untrack_debug(move || format!("cnt finds_uc: {}", len));
                         }
-                        
+
                         let mut find_ascii_res_pos: FindPatResObj<PosFindObj> =
                             FindPatResObj::with_capacity(find_res.unicode.len() / 256);
                         #[allow(clippy::search_is_some)]
@@ -884,15 +883,14 @@ unsafe fn get_childs_dyn_pats_cvoid(
                                     find_ascii_res_pos.push(PosFindObj(Some(x)));
                                     return true;
                                 }
-                                find_ascii_res_pos.push(PosFindObj(None));
                                 false
                             })
                             .map(|x| x.str.clone())
                             .collect();
 
-                        if let Some(ref log) = *pool_log_clone.clone(){
+                        if let Some(ref log) = *pool_log_clone.clone() {
                             let len = finds_ascii.0.clone().len();
-                            log.untrack_debug(move || format!("cnt finds_ascii: {}",len));
+                            log.untrack_debug(move || format!("cnt finds_ascii: {}", len));
                         }
 
                         //#[cfg(debug_assertions)]
@@ -990,13 +988,6 @@ unsafe fn get_childs_dyn_pats_cvoid(
         {}
         unsafe {
             ret.set_len(ret_len);
-        }
-        match log.deref(){
-            Some(some_log) => {
-                some_log.untrack_debug(|| "Закрываю логер");
-                let _ = shutdown_logger(log);
-            }
-            None => {},
         }
         Ok(ret)
     } else {
@@ -1226,6 +1217,7 @@ fn more_pats_run(name: &str) {
         return;
     }
     let pid = fnd_name.unwrap();
+    let log_clone = log.clone();
     println!("[DEBUG] pid: {}", pid);
     let res = more_pats(log, pid);
     if let Err(e) = res {
@@ -1290,15 +1282,15 @@ fn more_pats_run(name: &str) {
         let extract_ascii_pos_iter = res.extract_find_pos_ascii.iter();
         let extract_unicode_pos_iter = res.extract_find_pos_unicode.iter();
         println!("\n\n");
-        println!(
-            "extract_ascii_pos_iter len: {}",
-            extract_ascii_pos_iter.len()
-        );
-        println!(
-            "extract_unicode_pos_iter len: {}",
-            extract_unicode_pos_iter.len()
-        );
-        println!("extract_assci_str len: {}", res.extract_assci_str.len());
+        let len_extract_ascii_str = res.extract_assci_str.len();
+        let len_extract_unicode_str = res.extract_unicode_str.len();
+        if let Some(ref log) = *log_clone {
+            log.untrack_debug(move || format!("extract_assci_str len: {}", len_extract_ascii_str));
+            log.untrack_debug(move || {
+                format!("extract_unicode_str len: {}", len_extract_unicode_str)
+            });
+        }
+
         println!("extract_unicode_str len: {}", res.extract_unicode_str.len());
         println!("\n\nstrs: ");
 
@@ -1309,7 +1301,12 @@ fn more_pats_run(name: &str) {
             pos.into_iter().flat_map(|x| x.0).collect()
         }
 
+        let mut avg_ascii_str_size: usize = 0;
+        let mut avg_ascii_inner_item_size: usize = 0;
+
         for (item, pos) in res.extract_assci_str.iter().zip(extract_ascii_pos_iter) {
+            avg_ascii_str_size += (item.iter().map(|x| x.0.len()).sum::<usize>()) / item.len();
+            avg_ascii_inner_item_size += item.len();
             println!("\n\tPos len: {}\n", pos.len());
             if item.len() < 16
                 && item
@@ -1317,6 +1314,7 @@ fn more_pats_run(name: &str) {
                     .fold(usize::MIN, |cur_max, x| (x.len()).max(cur_max))
                     < 16
             {
+                /*
                 println!(
                     "ascii: {}",
                     VecStringNested::vec_string_nested(
@@ -1325,6 +1323,7 @@ fn more_pats_run(name: &str) {
                         DEFAULT_FORMAT_RULE
                     )
                 );
+                */
             } else {
                 let cur_pos_idx = 0;
                 let pos_clone = pos.clone();
@@ -1376,6 +1375,8 @@ fn more_pats_run(name: &str) {
                         }
                     }
                 };
+                avg_ascii_str_size /= len_extract_ascii_str;
+                avg_ascii_inner_item_size /= len_extract_ascii_str;
 
                 /*
                 let fmt_res = IteratorStringWithStateNested::iter_string_with_state_nested(
@@ -1386,7 +1387,6 @@ fn more_pats_run(name: &str) {
                 );
                 *///TODO
 
-                println!("extract_assci_str len: {}", res.extract_assci_str.len());
                 let fmt_res = item
                     .into_iter()
                     .enumerate()
@@ -1394,19 +1394,26 @@ fn more_pats_run(name: &str) {
                     .map(|(idx, v)| format_rule(&mut state, v.as_str(), idx, v.len()))
                     .collect::<Vec<_>>();
 
+                /*
                 println!(
                     "ascii: {} ...",
                     VecString::vec_string(&fmt_res, DEFAULT_FORMAT_RULE)
                 );
+                */
             }
         }
+        let mut avg_unicode_str_size = 0;
+        let mut avg_unicode_inner_item_size: usize = 0;
         for (item, pos) in res.extract_unicode_str.iter().zip(extract_unicode_pos_iter) {
+            avg_unicode_inner_item_size += item.len();
+            avg_unicode_str_size += (item.iter().map(|x| x.0.len()).sum::<usize>()) / item.len();
             if item.len() < 16
                 && item
                     .iter()
                     .fold(usize::MIN, |cur_max, x| (x.len()).max(cur_max))
                     < 16
             {
+                /*
                 println!(
                     "unicode: {}",
                     VecStringNested::vec_string_nested(
@@ -1415,6 +1422,7 @@ fn more_pats_run(name: &str) {
                         DEFAULT_FORMAT_RULE
                     )
                 );
+                */
             } else {
                 let cur_pos_idx = 0;
                 let pos_clone = pos.clone();
@@ -1466,6 +1474,9 @@ fn more_pats_run(name: &str) {
                         }
                     }
                 };
+
+                avg_unicode_str_size /= len_extract_unicode_str;
+                avg_unicode_inner_item_size /= len_extract_unicode_str;
 
                 /*
                 let fmt_res = IteratorStringWithState::iter_string_with_state(
@@ -1481,12 +1492,39 @@ fn more_pats_run(name: &str) {
                     .map(|(idx, v)| format_rule(&mut state, v.as_str(), idx, v.len()))
                     .collect::<Vec<_>>();
 
+                /*
                 println!(
                     "unicode: {} ...",
                     VecString::vec_string(&fmt_res, DEFAULT_FORMAT_RULE)
                 );
+                */
             }
         }
+
+        println!("\n\n");
+        if let Some(ref log) = *log_clone {
+            log.untrack_debug(move || {
+                format!(
+                    "avg_ascii_str_size: {}\navg_unicode_str_size: {}",
+                    avg_ascii_str_size, avg_unicode_str_size
+                )
+            });
+            println!("\n");
+            log.untrack_debug(move || {
+                format!(
+                    "avg_ascii_inner_item_size: {}\n avg_unicode_inner_item_size: {}",
+                    avg_ascii_inner_item_size, avg_unicode_inner_item_size
+                )
+            });
+        }
+    }
+
+    match log_clone.deref() {
+        Some(some_log) => {
+            some_log.untrack_debug(|| "Закрываю логер");
+            let _ = shutdown_logger(log_clone);
+        }
+        None => {}
     }
 }
 

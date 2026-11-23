@@ -73,7 +73,7 @@ pub struct ExtractStr {
 
 impl std::fmt::Display for ExtractStr {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        writeln!(f, "Str: {}\tPtr: {:p}", self.str,self.base_addr)
+        writeln!(f, "Str: {}\tPtr: {:p}", self.str, self.base_addr)
     }
 }
 
