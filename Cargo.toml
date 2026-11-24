@@ -35,9 +35,13 @@ allocative = "0.3.6"
 memchr = "2.8.1"
 ambassador = "0.5.1"
 compio = "0.19.2"
-compio-driver = "0.12.5"
+compio-driver = {version = "0.12.5", features = ["sync"]}
 compio-runtime = "0.12.6"
-windows-sys = "0.61.2"
+windows-sys = {version = "0.61.2", features = [
+        "Win32_Foundation",
+        "Win32_Security",
+        "Win32_Storage_FileSystem",
+    ]}
 
 [features]
 hotpath = ["hotpath/hotpath"]
